@@ -1,0 +1,5 @@
+#dependencies
+/backend/package-lock.json
+#Databases
+/databases
+/databases/user.db
