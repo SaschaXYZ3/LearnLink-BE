@@ -1,5 +1,6 @@
 #dependencies
 /backend/package-lock.json
+/backend/node_modules/*
 #Databases
 /databases
 /databases/user.db
