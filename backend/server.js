@@ -13,7 +13,7 @@ const PORT = 5000;
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(bodyParser.json());
+app.use(express.json());
 
 // API Endpoint
 app.get("/api/message", (req, res) => {
@@ -69,11 +69,16 @@ app.post("/register", (req, res) => {
     return res.status(400).json({ error: validationError });
   }
 
+  // only admins are allowed to create users with the the role 'admin'
+  const requestedRole = role && role === "admin" ? "admin" : "student";
+
   const hashedPassword = bcrypt.hashSync(password, 8); // Hash password
-  const query = `INSERT INTO users (username, email, password, role, birthDate) VALUES (?, ?, ?, ?, ?)`;
+  const query = `INSERT INTO users (username, email, password, role, birthDate) VALUES (?, ?, ?, ?, ?)`; // Corrected query
 
   // Insert user into the database
-db.run(query, [username, email, hashedPassword, role, birthDate], function (err) {
+  db.run(query, 
+    [username, email, hashedPassword, requestedRole, birthDate], 
+    function (err) {
     if (err) {
       console.error("Database error:", err.message); 
       if (err.code === "SQLITE_CONSTRAINT") {
@@ -81,64 +86,21 @@ db.run(query, [username, email, hashedPassword, role, birthDate], function (err)
       }
       return res.status(500).json({ error: "Internal server error" });
     }
-    res.status(201).json({ id: this.lastID, username, email, role, birthDate });
+    res.status(201).json({ id: this.lastID, username, email, role: requestedRole, birthDate });
   });
 });
-
 
 // Login endpoint
 app.post("/login", (req, res) => {
   const { username, password } = req.body;
 
   if (!username || !password) {
-    return res
-      .status(400)
-      .json({ error: "Both username and password are required" });
+    return res.status(400).json({ error: "Both username and password are required" });
   }
 
-  // Contact Form Submission Endpoint
-app.post("/contact", (req, res) => {
-  const { name, email, message } = req.body;
-
-  // Validate input
-  if (!name || !email || !message) {
-    return res.status(400).json({ error: "All fields are required" });
-  }
-
-  const query = `INSERT INTO contact_requests (name, email, message) VALUES (?, ?, ?)`;
-
-  // Save contact form data into the database
-  db.run(query, [name, email, message], function (err) {
-    if (err) {
-      console.error("Database error:", err.message);
-      return res.status(500).json({ error: "Failed to save the contact request" });
-    }
-
-    res.status(201).json({ message: "Contact request saved successfully!" });
-  });
-});
-
-/* TO BE REENABLED ONCE ADMIN PANEL IS LIVE
-
-// Retrieve all contact form submissions
-app.get("/contact", (req, res) => {
-  const query = `SELECT * FROM contact_requests ORDER BY date DESC`;
-
-  db.all(query, [], (err, rows) => {
-    if (err) {
-      console.error("Database error:", err.message);
-      return res.status(500).json({ error: "Failed to retrieve contact requests" });
-    }
-
-    res.status(200).json(rows);
-  });
-});
-
-*/
-
+  // SQL query to fetch user by username
   const query = `SELECT * FROM users WHERE username = ?`;
 
-  // Fetch user from database by username
   db.get(query, [username], (err, user) => {
     if (err) {
       return res.status(500).json({ error: "Internal server error" });
@@ -161,16 +123,42 @@ app.get("/contact", (req, res) => {
       { expiresIn: 86400 } // Token validity
     );
 
+    // Successful login, return user info and JWT token
     res.json({
       id: user.id,
       username: user.username,
       email: user.email,
-      role: user.role,         
-      birthDate: user.birthDate, 
-      token,
+      role: user.role,
+      birthDate: user.birthDate,
+      token, // JWT token returned
     });
   });
 });
+
+// Route zum Abrufen aller Benutzer (für das Admin Dashboard)
+app.get("/admin", authenticateToken, (req, res) => {
+  // Sicherstellen, dass der Benutzer ein Admin ist
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: "Access denied, you are not an admin" });
+  }
+
+  // SQL-Abfrage, um alle Benutzer aus der Tabelle zu holen
+  const query = `SELECT id, username, email, role, birthDate FROM users`;
+
+  // Alle Benutzer aus der Datenbank abfragen
+  db.all(query, [], (err, rows) => {
+    if (err) {
+      console.error("Database error:", err.message);
+      return res.status(500).json({ error: "Failed to retrieve users" });
+    }
+
+    // Erfolgreiche Antwort mit den Benutzerdaten
+    res.status(200).json(rows);
+  });
+});
+
+
+
 
 // Start Server
 app.listen(PORT, () => {
