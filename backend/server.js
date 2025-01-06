@@ -11,12 +11,33 @@ const SECRET_KEY =
   "XdvZ1GSeTsE48kPKCo3zqkZb2sLFnUbsfoqwFL2SN4pn6EcEyFS9IEI3evPvwo59";
 
 const app = express();
-const PORT = 5000;
+const PORT = 5001;
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.json());
+
+// JWT verification middleware
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader) {
+    return res.status(403).json({ error: "No token provided" });
+  }
+
+  const token = authHeader.split(" ")[1]; // Bearer <token>
+
+  jwt.verify(token, SECRET_KEY, (err, user) => {
+    if (err) {
+      return res.status(401).json({ error: "Invalid or expired token" });
+    }
+
+    req.user = user; // Attach user data to request
+    next(); // Proceed to the next middleware or route handler
+  });
+};
+
 
 // Setup multer (Speichern von Profilbildern im "uploads" Verzeichnis)
 const storage = multer.diskStorage({
@@ -87,25 +108,6 @@ app.get("/api/message", (req, res) => {
   res.json({ message: "Hello from the backend!" });
 });
 
-// JWT verification middleware
-const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader) {
-    return res.status(403).json({ error: "No token provided" });
-  }
-
-  const token = authHeader.split(" ")[1]; // Bearer <token>
-
-  jwt.verify(token, SECRET_KEY, (err, user) => {
-    if (err) {
-      return res.status(401).json({ error: "Invalid or expired token" });
-    }
-
-    req.user = user; // Attach user data to request
-    next(); // Proceed to the next middleware or route handler
-  });
-};
 
 // Protected route example --> use for div. subpages
 app.get("/api/protected", authenticateToken, (req, res) => {
