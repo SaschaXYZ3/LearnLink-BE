@@ -20,7 +20,8 @@ db.serialize(() => {
       email TEXT,
       password TEXT,
       role TEXT DEFAULT 'student',
-      birthDate TEXT
+      birthDate TEXT,
+      profileImage TEXT
     )
   `);
 
@@ -33,6 +34,8 @@ db.serialize(() => {
       date TEXT DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+
 
   // AAdd admin user if not already present
   const adminUsername = "admin";
@@ -69,6 +72,18 @@ db.serialize(() => {
     }
   );
 });
+
+
+
+{/*}
+db.run("ALTER TABLE users ADD COLUMN profileImage TEXT", (err) => {
+  if (err) {
+    console.error("Error adding profileImage column:", err.message);
+  } else {
+    console.log("profileImage column added successfully.");
+  }
+});
+*/}
 
 
 module.exports = db;

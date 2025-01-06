@@ -4,6 +4,9 @@ const bodyParser = require("body-parser");
 const db = require("./database");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const multer = require("multer");
+const path = require("path");
+
 const SECRET_KEY =
   "XdvZ1GSeTsE48kPKCo3zqkZb2sLFnUbsfoqwFL2SN4pn6EcEyFS9IEI3evPvwo59";
 
@@ -15,7 +18,71 @@ app.use(cors());
 app.use(express.json());
 app.use(express.json());
 
-// API Endpoint
+// Setup multer (Speichern von Profilbildern im "uploads" Verzeichnis)
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, "uploads/"); // Zielverzeichnis
+  },
+  filename: (req, file, cb) => {
+    cb(null, Date.now() + path.extname(file.originalname)); // Dateiname wird auf die aktuelle Zeit + Dateierweiterung gesetzt
+  },
+});
+
+const upload = multer({ storage: storage });
+
+// API Endpoints
+
+// Endpoint zum Abrufen des Profils eines Benutzers (GET /api/user/:id)
+app.get("/api/user/:id", authenticateToken, (req, res) => {
+  const query = "SELECT id, username, email, role, birthDate, profileImage FROM users WHERE id = ?";
+  db.get(query, [req.params.id], (err, row) => {
+    if (err) {
+      return res.status(500).json({ error: "Failed to retrieve user profile" });
+    }
+
+    if (!row) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Profilbild muss als URL zur Verfügung gestellt werden
+    const profileImageUrl = row.profileImage
+      ? `${req.protocol}://${req.get("host")}/uploads/${row.profileImage}`
+      : null;
+
+    res.json({
+      ...row,
+      profileImageUrl, // Füge das Profilbild als URL hinzu
+    });
+  });
+});
+
+// Endpoint zum Aktualisieren des Profils eines Benutzers (POST /api/user/update)
+app.post("/api/user/update", authenticateToken, upload.single("profileImage"), (req, res) => {
+  const { name, email, role, birthdate, address } = req.body;
+  const profileImage = req.file ? req.file.filename : null; // Falls ein Profilbild hochgeladen wurde, wird es gespeichert.
+
+  // SQL-Abfrage zum Aktualisieren der Benutzerinformationen
+  const query = `
+    UPDATE users
+    SET username = ?, email = ?, role = ?, birthDate = ?, address = ?, profileImage = ?
+    WHERE id = ?;
+  `;
+
+  db.run(
+    query,
+    [name, email, role, birthdate, address, profileImage, req.user.id],
+    function (err) {
+      if (err) {
+        return res.status(500).json({ error: "Failed to update user profile" });
+      }
+
+      res.json({ message: "Profile updated successfully", userId: req.user.id });
+    }
+  );
+});
+
+
+
 app.get("/api/message", (req, res) => {
   res.json({ message: "Hello from the backend!" });
 });

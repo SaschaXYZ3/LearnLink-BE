@@ -44,6 +44,10 @@ LearnLink ist eine Backend-Anwendung, die eine Basis für die Verwaltung von Ben
 
 ---
 
+npm install multer
+npm install axios
+npm install jwt-decode
+
 ## API Endpoints
 
 ### Öffentliche Endpoints
