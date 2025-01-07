@@ -11,7 +11,7 @@ const db = new sqlite3.Database("../databases/user.db", (err) => {
 db.serialize(() => {
   // drop the old users table
   //db.run("DROP TABLE IF EXISTS users");
-  
+
   // Create users table
   db.run(`
     CREATE TABLE IF NOT EXISTS users (
@@ -35,6 +35,20 @@ db.serialize(() => {
     )
   `);
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS courses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      category TEXT NOT NULL,
+      subcategory TEXT NOT NULL,
+      level TEXT NOT NULL,
+      maxStudents INTEGER NOT NULL,
+      tutoringType TEXT,
+      date TEXT NOT NULL,
+      time TEXT NOT NULL,
+      meetingLink TEXT NOT NULL
+    )
+  `);
 
   // AAdd admin user if not already present
   const adminUsername = "admin";
@@ -48,7 +62,10 @@ db.serialize(() => {
     [adminUsername],
     (err, row) => {
       if (err) {
-        console.error("Error while checking for existing admin user:", err.message);
+        console.error(
+          "Error while checking for existing admin user:",
+          err.message
+        );
         return;
       }
 
@@ -72,9 +89,8 @@ db.serialize(() => {
   );
 });
 
-
-
-{/*}
+{
+  /*}
 db.run("ALTER TABLE users ADD COLUMN profileImage TEXT", (err) => {
   if (err) {
     console.error("Error adding profileImage column:", err.message);
@@ -82,7 +98,7 @@ db.run("ALTER TABLE users ADD COLUMN profileImage TEXT", (err) => {
     console.log("profileImage column added successfully.");
   }
 });
-*/}
-
+*/
+}
 
 module.exports = db;

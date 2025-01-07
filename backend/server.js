@@ -9,12 +9,11 @@ const SECRET_KEY =
   "XdvZ1GSeTsE48kPKCo3zqkZb2sLFnUbsfoqwFL2SN4pn6EcEyFS9IEI3evPvwo59";
 
 const app = express();
-const PORT = 5001;
+const PORT = 5000;
 
 // Middleware
 app.use(cors());
 app.use(express.json());
-
 
 // JWT verification middleware
 const authenticateToken = (req, res, next) => {
@@ -36,13 +35,10 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
-
-
 // API Endpoints
 app.get("/api/message", (req, res) => {
   res.json({ message: "Hello from the backend!" });
 });
-
 
 // Protected route example --> use for div. subpages
 app.get("/api/protected", authenticateToken, (req, res) => {
@@ -67,7 +63,7 @@ const validateRegisterInput = ({ username, email, password }) => {
 app.post("/register", (req, res) => {
   console.log("Request Body:", req.body);
   const { username, email, password, role, birthDate } = req.body;
-  
+
   // Validate input
   const validationError = validateRegisterInput({ username, email, password });
   if (validationError) {
@@ -81,11 +77,12 @@ app.post("/register", (req, res) => {
   const query = `INSERT INTO users (username, email, password, role, birthDate) VALUES (?, ?, ?, ?, ?)`; // Corrected query
 
   // Insert user into the database
-  db.run(query, 
-    [username, email, hashedPassword, requestedRole, birthDate], 
+  db.run(
+    query,
+    [username, email, hashedPassword, requestedRole, birthDate],
     function (err) {
       if (err) {
-        console.error("Database error:", err.message); 
+        console.error("Database error:", err.message);
         if (err.code === "SQLITE_CONSTRAINT") {
           return res.status(400).json({ error: "Username already exists" });
         }
@@ -107,8 +104,9 @@ app.post("/register", (req, res) => {
         role: requestedRole,
         birthDate,
         token, // JWT token returned
-     });
-  });
+      });
+    }
+  );
 });
 
 // Login endpoint
@@ -116,7 +114,9 @@ app.post("/login", (req, res) => {
   const { username, password } = req.body;
 
   if (!username || !password) {
-    return res.status(400).json({ error: "Both username and password are required" });
+    return res
+      .status(400)
+      .json({ error: "Both username and password are required" });
   }
 
   // SQL query to fetch user by username
@@ -156,14 +156,13 @@ app.post("/login", (req, res) => {
   });
 });
 
-
-
-
 // Route zum Abrufen aller Benutzer (für das Admin Dashboard)
 app.get("/admin", authenticateToken, (req, res) => {
   // Sicherstellen, dass der Benutzer ein Admin ist
-  if (req.user.role !== 'admin') {
-    return res.status(403).json({ error: "Access denied, you are not an admin" });
+  if (req.user.role !== "admin") {
+    return res
+      .status(403)
+      .json({ error: "Access denied, you are not an admin" });
   }
 
   // SQL-Abfrage, um alle Benutzer aus der Tabelle zu holen
@@ -181,8 +180,83 @@ app.get("/admin", authenticateToken, (req, res) => {
   });
 });
 
+// API Endpoint um einen Kurs hinzuzufügen
+app.post("/api/courses", (req, res) => {
+  const {
+    title,
+    category,
+    subcategory,
+    level,
+    maxStudents,
+    tutoringType,
+    date,
+    time,
+    meetingLink,
+  } = req.body;
 
+  const query = `INSERT INTO courses (title, category, subcategory, level, maxStudents, tutoringType, date, time, meetingLink) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
+  db.run(
+    query,
+    [
+      title,
+      category,
+      subcategory,
+      level,
+      maxStudents,
+      tutoringType,
+      date,
+      time,
+      meetingLink,
+    ],
+    function (err) {
+      if (err) {
+        console.error("Database error:", err.message);
+        return res.status(500).json({ error: "Failed to add the course" });
+      }
+
+      res
+        .status(201)
+        .json({ message: "Course added successfully", courseId: this.lastID });
+    }
+  );
+});
+
+// API Endpoint zum Abrufen aller Kurse
+app.get("/api/courses", authenticateToken, (req, res) => {
+  const query = `SELECT * FROM courses`;
+
+  db.all(query, [], (err, rows) => {
+    if (err) {
+      console.error("Database error:", err.message);
+      return res.status(500).json({ error: "Failed to retrieve courses" });
+    }
+
+    res.status(200).json(rows);
+  });
+});
+
+// API Endpoint zum Löschen eines Kurses
+app.delete("/api/courses/:id", authenticateToken, (req, res) => {
+  const { id } = req.params;
+
+  const query = `DELETE FROM courses WHERE id = ?`;
+
+  db.run(query, [id], function (err) {
+    if (err) {
+      console.error("Database error:", err.message);
+      return res.status(500).json({ error: "Failed to delete course" });
+    }
+
+    if (this.changes === 0) {
+      return res.status(404).json({ error: "Course not found" });
+    }
+
+    res
+      .status(200)
+      .json({ message: `Course with ID ${id} deleted successfully` });
+  });
+});
 
 // Start Server
 app.listen(PORT, () => {
