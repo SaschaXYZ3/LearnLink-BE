@@ -19,7 +19,7 @@ db.serialize(() => {
       username TEXT UNIQUE,
       email TEXT,
       password TEXT,
-      role TEXT DEFAULT 'student',
+      role TEXT,
       birthDate TEXT,
       profileImage TEXT
     )
@@ -34,7 +34,6 @@ db.serialize(() => {
       date TEXT DEFAULT CURRENT_TIMESTAMP
     )
   `);
-
 
 
   // AAdd admin user if not already present

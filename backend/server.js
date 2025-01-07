@@ -1,10 +1,8 @@
 const express = require("express");
 const cors = require("cors");
-const bodyParser = require("body-parser");
 const db = require("./database");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-const multer = require("multer");
 const path = require("path");
 
 const SECRET_KEY =
@@ -16,76 +14,7 @@ const PORT = 5000;
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.json());
 
-// Setup multer (Speichern von Profilbildern im "uploads" Verzeichnis)
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "uploads/"); // Zielverzeichnis
-  },
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname)); // Dateiname wird auf die aktuelle Zeit + Dateierweiterung gesetzt
-  },
-});
-
-const upload = multer({ storage: storage });
-
-// API Endpoints
-
-// Endpoint zum Abrufen des Profils eines Benutzers (GET /api/user/:id)
-app.get("/api/user/:id", authenticateToken, (req, res) => {
-  const query = "SELECT id, username, email, role, birthDate, profileImage FROM users WHERE id = ?";
-  db.get(query, [req.params.id], (err, row) => {
-    if (err) {
-      return res.status(500).json({ error: "Failed to retrieve user profile" });
-    }
-
-    if (!row) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    // Profilbild muss als URL zur Verfügung gestellt werden
-    const profileImageUrl = row.profileImage
-      ? `${req.protocol}://${req.get("host")}/uploads/${row.profileImage}`
-      : null;
-
-    res.json({
-      ...row,
-      profileImageUrl, // Füge das Profilbild als URL hinzu
-    });
-  });
-});
-
-// Endpoint zum Aktualisieren des Profils eines Benutzers (POST /api/user/update)
-app.post("/api/user/update", authenticateToken, upload.single("profileImage"), (req, res) => {
-  const { name, email, role, birthdate, address } = req.body;
-  const profileImage = req.file ? req.file.filename : null; // Falls ein Profilbild hochgeladen wurde, wird es gespeichert.
-
-  // SQL-Abfrage zum Aktualisieren der Benutzerinformationen
-  const query = `
-    UPDATE users
-    SET username = ?, email = ?, role = ?, birthDate = ?, address = ?, profileImage = ?
-    WHERE id = ?;
-  `;
-
-  db.run(
-    query,
-    [name, email, role, birthdate, address, profileImage, req.user.id],
-    function (err) {
-      if (err) {
-        return res.status(500).json({ error: "Failed to update user profile" });
-      }
-
-      res.json({ message: "Profile updated successfully", userId: req.user.id });
-    }
-  );
-});
-
-
-
-app.get("/api/message", (req, res) => {
-  res.json({ message: "Hello from the backend!" });
-});
 
 // JWT verification middleware
 const authenticateToken = (req, res, next) => {
@@ -106,6 +35,14 @@ const authenticateToken = (req, res, next) => {
     next(); // Proceed to the next middleware or route handler
   });
 };
+
+
+
+// API Endpoints
+app.get("/api/message", (req, res) => {
+  res.json({ message: "Hello from the backend!" });
+});
+
 
 // Protected route example --> use for div. subpages
 app.get("/api/protected", authenticateToken, (req, res) => {
@@ -128,8 +65,9 @@ const validateRegisterInput = ({ username, email, password }) => {
 
 // Register endpoint
 app.post("/register", (req, res) => {
+  console.log("Request Body:", req.body);
   const { username, email, password, role, birthDate } = req.body;
-
+  
   // Validate input
   const validationError = validateRegisterInput({ username, email, password });
   if (validationError) {
@@ -137,7 +75,7 @@ app.post("/register", (req, res) => {
   }
 
   // only admins are allowed to create users with the the role 'admin'
-  const requestedRole = role && role === "admin" ? "admin" : "student";
+  const requestedRole = role === "admin" ? "admin" : role;
 
   const hashedPassword = bcrypt.hashSync(password, 8); // Hash password
   const query = `INSERT INTO users (username, email, password, role, birthDate) VALUES (?, ?, ?, ?, ?)`; // Corrected query
@@ -146,14 +84,30 @@ app.post("/register", (req, res) => {
   db.run(query, 
     [username, email, hashedPassword, requestedRole, birthDate], 
     function (err) {
-    if (err) {
-      console.error("Database error:", err.message); 
-      if (err.code === "SQLITE_CONSTRAINT") {
-        return res.status(400).json({ error: "Username already exists" });
+      if (err) {
+        console.error("Database error:", err.message); 
+        if (err.code === "SQLITE_CONSTRAINT") {
+          return res.status(400).json({ error: "Username already exists" });
+        }
+        return res.status(500).json({ error: "Internal server error" });
       }
-      return res.status(500).json({ error: "Internal server error" });
-    }
-    res.status(201).json({ id: this.lastID, username, email, role: requestedRole, birthDate });
+
+      // Generate JWT token after successful user creation
+      const token = jwt.sign(
+        { id: this.lastID, username, role: requestedRole }, // Payload
+        SECRET_KEY, // Secret key
+        { expiresIn: 86400 } // Token validity
+      );
+
+      // Respond with user details and the token
+      res.json({
+        id: this.lastID, // Use the lastID from the db insertion
+        username,
+        email,
+        role: requestedRole,
+        birthDate,
+        token, // JWT token returned
+     });
   });
 });
 
@@ -185,7 +139,7 @@ app.post("/login", (req, res) => {
 
     // Generate JWT token
     const token = jwt.sign(
-      { id: user.id, username: user.username }, // Payload
+      { id: user.id, username: user.username, role: user.role }, // Payload
       SECRET_KEY, // Secret key
       { expiresIn: 86400 } // Token validity
     );
@@ -201,6 +155,9 @@ app.post("/login", (req, res) => {
     });
   });
 });
+
+
+
 
 // Route zum Abrufen aller Benutzer (für das Admin Dashboard)
 app.get("/admin", authenticateToken, (req, res) => {
