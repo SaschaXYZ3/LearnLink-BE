@@ -181,7 +181,7 @@ app.get("/admin", authenticateToken, (req, res) => {
 });
 
 // API Endpoint um einen Kurs hinzuzufügen
-app.post("/api/courses", (req, res) => {
+app.post("/api/courses", authenticateToken, (req, res) => {
   const {
     title,
     category,
@@ -194,7 +194,25 @@ app.post("/api/courses", (req, res) => {
     meetingLink,
   } = req.body;
 
-  const query = `INSERT INTO courses (title, category, subcategory, level, maxStudents, tutoringType, date, time, meetingLink) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+  const userId = req.user.id; // Die userId des eingeloggten Benutzers
+
+  if (
+    !title ||
+    !category ||
+    !subcategory ||
+    !level ||
+    !maxStudents ||
+    !date ||
+    !time ||
+    !meetingLink
+  ) {
+    return res.status(400).json({ error: "All fields are required" });
+  }
+
+  const query = `
+    INSERT INTO courses (
+      title, category, subcategory, level, maxStudents, tutoringType, date, time, meetingLink, userId
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
   db.run(
     query,
@@ -208,6 +226,7 @@ app.post("/api/courses", (req, res) => {
       date,
       time,
       meetingLink,
+      userId,
     ],
     function (err) {
       if (err) {
@@ -224,7 +243,11 @@ app.post("/api/courses", (req, res) => {
 
 // API Endpoint zum Abrufen aller Kurse
 app.get("/api/courses", authenticateToken, (req, res) => {
-  const query = `SELECT * FROM courses`;
+  const query = `
+    SELECT courses.*, users.username AS tutor
+    FROM courses
+    JOIN users ON courses.userId = users.id
+  `;
 
   db.all(query, [], (err, rows) => {
     if (err) {
@@ -236,25 +259,86 @@ app.get("/api/courses", authenticateToken, (req, res) => {
   });
 });
 
-// API Endpoint zum Löschen eines Kurses
-app.delete("/api/courses/:id", authenticateToken, (req, res) => {
-  const { id } = req.params;
+// API Endpoint zum Abrufen der Kurse des eingeloggten Tutors
+app.get("/api/courses/mine", authenticateToken, (req, res) => {
+  const userId = req.user.id;
 
-  const query = `DELETE FROM courses WHERE id = ?`;
+  const query = `
+    SELECT * FROM courses WHERE userId = ?
+  `;
 
-  db.run(query, [id], function (err) {
+  db.all(query, [userId], (err, rows) => {
     if (err) {
       console.error("Database error:", err.message);
-      return res.status(500).json({ error: "Failed to delete course" });
+      return res.status(500).json({ error: "Failed to retrieve your courses" });
     }
 
-    if (this.changes === 0) {
+    res.status(200).json(rows);
+  });
+});
+
+// API Endpoint zum Abrufen eines einzelnen Kurses
+app.get("/api/courses/:id", authenticateToken, (req, res) => {
+  const { id } = req.params;
+
+  const query = `
+    SELECT courses.*, users.username AS tutor
+    FROM courses
+    JOIN users ON courses.userId = users.id
+    WHERE courses.id = ?
+  `;
+
+  db.get(query, [id], (err, course) => {
+    if (err) {
+      console.error("Database error:", err.message);
+      return res.status(500).json({ error: "Failed to retrieve course" });
+    }
+
+    if (!course) {
       return res.status(404).json({ error: "Course not found" });
     }
 
-    res
-      .status(200)
-      .json({ message: `Course with ID ${id} deleted successfully` });
+    res.status(200).json(course);
+  });
+});
+
+// API Endpoint zum Löschen eines Kurses
+app.delete("/api/courses/:id", authenticateToken, (req, res) => {
+  const { id } = req.params;
+  const userId = req.user.id;
+  const userRole = req.user.role;
+
+  // Überprüfen, ob der Benutzer berechtigt ist, den Kurs zu löschen
+  const checkQuery = `SELECT * FROM courses WHERE id = ?`;
+  db.get(checkQuery, [id], (err, course) => {
+    if (err) {
+      console.error("Database error:", err.message);
+      return res.status(500).json({ error: "Failed to retrieve course" });
+    }
+
+    if (!course) {
+      return res.status(404).json({ error: "Course not found" });
+    }
+
+    // Prüfen, ob der Benutzer der Ersteller des Kurses oder ein Admin ist
+    if (course.userId !== userId && userRole !== "admin") {
+      return res
+        .status(403)
+        .json({ error: "You are not authorized to delete this course" });
+    }
+
+    // Kurs löschen
+    const deleteQuery = `DELETE FROM courses WHERE id = ?`;
+    db.run(deleteQuery, [id], function (err) {
+      if (err) {
+        console.error("Database error:", err.message);
+        return res.status(500).json({ error: "Failed to delete course" });
+      }
+
+      res
+        .status(200)
+        .json({ message: `Course with ID ${id} deleted successfully` });
+    });
   });
 });
 

@@ -35,6 +35,10 @@ db.serialize(() => {
     )
   `);
 
+  // Drop the old courses table if needed
+  //db.run("DROP TABLE IF EXISTS courses");
+
+  // Create courses table with userId
   db.run(`
     CREATE TABLE IF NOT EXISTS courses (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -46,7 +50,9 @@ db.serialize(() => {
       tutoringType TEXT,
       date TEXT NOT NULL,
       time TEXT NOT NULL,
-      meetingLink TEXT NOT NULL
+      meetingLink TEXT NOT NULL,
+      userId INTEGER NOT NULL,
+      FOREIGN KEY (userId) REFERENCES users (id)
     )
   `);
 
