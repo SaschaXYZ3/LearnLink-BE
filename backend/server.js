@@ -9,7 +9,7 @@ const SECRET_KEY =
   "XdvZ1GSeTsE48kPKCo3zqkZb2sLFnUbsfoqwFL2SN4pn6EcEyFS9IEI3evPvwo59";
 
 const app = express();
-const PORT = 5000;
+const PORT = 5001;
 
 // Middleware
 app.use(cors());
@@ -341,6 +341,106 @@ app.delete("/api/courses/:id", authenticateToken, (req, res) => {
     });
   });
 });
+
+
+// FORUM SECTION:
+//-----------------
+
+// GET: Alle Beiträge abrufen inklusive Anzahl der Kommentare
+app.get("/forum", (req, res) => {
+  const query = `
+      SELECT posts.*, COUNT(comments.id) AS commentCount 
+      FROM posts 
+      LEFT JOIN comments ON posts.id = comments.postId 
+      GROUP BY posts.id
+  `;
+  db.all(query, (err, rows) => {
+      if (err) {
+          return res.status(500).json({ error: "Datenbankfehler beim Abrufen der Beiträge" });
+      }
+      res.json(rows);
+  });
+});
+
+// POST: Neuen Beitrag hinzufügen
+app.post("/forum", (req, res) => {
+  const { title, content, username } = req.body;
+
+  if (!title || !content || !username) {
+      return res.status(400).json({ error: "Titel, Inhalt und Username sind erforderlich." });
+  }
+
+  const query = `INSERT INTO posts (title, content, username, likes, reported) VALUES (?, ?, ?, 0, 0)`;
+  db.run(query, [title, content, username], function (err) {
+      if (err) {
+          return res.status(500).json({ error: "Fehler beim Hinzufügen des Beitrags" });
+      }
+      res.status(201).json({ id: this.lastID, title, content, username });
+  });
+});
+
+// POST: Kommentar hinzufügen
+app.post("/forum/comment", (req, res) => {
+  const { postId, comment, username } = req.body;
+
+  if (!postId || !comment || !username) {
+      return res.status(400).json({ error: "PostId, Kommentar und Username sind erforderlich." });
+  }
+
+  const query = `INSERT INTO comments (postId, content, author) VALUES (?, ?, ?)`;
+  db.run(query, [postId, comment, username], function (err) {
+      if (err) {
+          console.error("Fehler beim Hinzufügen des Kommentars:", err.message);
+          return res.status(500).json({ error: "Fehler beim Hinzufügen des Kommentars" });
+      }
+      res.status(201).json({ id: this.lastID, comment, username });
+  });
+});
+
+// GET: Kommentare zu einem Beitrag abrufen
+app.get("/forum/comments/:postId", (req, res) => {
+  const { postId } = req.params;
+
+  const query = `SELECT * FROM comments WHERE postId = ?`;
+  db.all(query, [postId], (err, rows) => {
+      if (err) {
+          return res.status(500).json({ error: "Fehler beim Abrufen der Kommentare" });
+      }
+      res.json(rows);
+  });
+});
+
+// POST: Beitrag liken
+app.post("/forum/like/:id", (req, res) => {
+  const { id } = req.params;
+
+  const query = `UPDATE posts SET likes = likes + 1 WHERE id = ?`;
+  db.run(query, [id], (err) => {
+      if (err) {
+          return res.status(500).json({ error: "Fehler beim Liken des Beitrags" });
+      }
+      res.json({ message: "Beitrag erfolgreich geliked" });
+  });
+});
+
+// POST: Beitrag melden
+app.post("/forum/report/:id", (req, res) => {
+  const { id } = req.params;
+
+  const query = `UPDATE posts SET reported = 1 WHERE id = ?`;
+  db.run(query, [id], (err) => {
+      if (err) {
+          return res.status(500).json({ error: "Fehler beim Melden des Beitrags" });
+      }
+      res.json({ message: "Beitrag erfolgreich gemeldet" });
+  });
+});
+
+// Fehlerbehandlung für nicht existierende Routen
+app.use((req, res) => {
+  res.status(404).json({ error: "Route nicht gefunden" });
+});
+
 
 // Start Server
 app.listen(PORT, () => {
