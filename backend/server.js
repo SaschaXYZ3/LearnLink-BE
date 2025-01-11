@@ -168,6 +168,282 @@ app.use((req, res) => {
   res.status(404).json({ error: "Route not found" });
 });
 
+// API Endpoint um einen Kurs hinzuzufügen
+app.post("/api/courses", authenticateToken, (req, res) => {
+  console.log("Received request to add a course");
+
+  // Destrukturierung der Werte aus dem Request Body
+  const {
+    title,
+    category,
+    subcategory,
+    level,
+    maxStudents,
+    tutoringType,
+    date,
+    time,
+    meetingLink,
+  } = req.body;
+
+  const userId = req.user.id; // Die userId des eingeloggten Benutzers
+  console.log("Authenticated userId: ", userId);
+
+  // Überprüfung, ob alle Felder im Request vorhanden sind
+  if (
+    !title ||
+    !category ||
+    !subcategory ||
+    !level ||
+    !maxStudents ||
+    !date ||
+    !time ||
+    !meetingLink
+  ) {
+    console.log("Missing required fields");
+    return res.status(400).json({ error: "All fields are required" });
+  }
+
+  // SQL Query zum Hinzufügen des Kurses
+  const query = `INSERT INTO courses (
+    title, category, subcategory, level, maxStudents, tutoringType, date, time, meetingLink, userId
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
+  // Logging der Werte, bevor die Datenbankabfrage ausgeführt wird
+  console.log("Course Data:", {
+    title,
+    category,
+    subcategory,
+    level,
+    maxStudents,
+    tutoringType,
+    date,
+    time,
+    meetingLink,
+    userId,
+  });
+
+  db.run(
+    query,
+    [
+      title,
+      category,
+      subcategory,
+      level,
+      maxStudents,
+      tutoringType,
+      date,
+      time,
+      meetingLink,
+      userId,
+    ],
+    function (err) {
+      if (err) {
+        console.error("Database error:", err.message);
+        return res.status(500).json({ error: "Failed to add the course" });
+      }
+
+      // Erfolgreiches Hinzufügen des Kurses
+      console.log("Course added successfully, ID:", this.lastID);
+      res
+        .status(201)
+        .json({ message: "Course added successfully", courseId: this.lastID });
+    }
+  );
+});
+
+// API Endpoint zum Abrufen aller Kurse
+app.get("/api/courses", authenticateToken, (req, res) => {
+  const query = `SELECT courses.*, users.username AS tutor
+    FROM courses
+    JOIN users ON courses.userId = users.id`;
+
+  db.all(query, [], (err, rows) => {
+    if (err) {
+      console.error("Database error:", err.message);
+      return res.status(500).json({ error: "Failed to retrieve courses" });
+    }
+
+    res.status(200).json(rows);
+  });
+});
+
+// API Endpoint zum Abrufen der Kurse des eingeloggten Tutors
+app.get("/api/courses/mine", authenticateToken, (req, res) => {
+  const userId = req.user.id;
+
+  const query = `SELECT * FROM courses WHERE userId = ?`;
+
+  db.all(query, [userId], (err, rows) => {
+    if (err) {
+      console.error("Database error:", err.message);
+      return res.status(500).json({ error: "Failed to retrieve your courses" });
+    }
+
+    res.status(200).json(rows);
+  });
+});
+
+// API Endpoint zum Abrufen eines einzelnen Kurses
+app.get("/api/courses/:id", authenticateToken, (req, res) => {
+  const { id } = req.params;
+
+  const query = `SELECT courses.*, users.username AS tutor
+    FROM courses
+    JOIN users ON courses.userId = users.id
+    WHERE courses.id = ?`;
+
+  db.get(query, [id], (err, course) => {
+    if (err) {
+      console.error("Database error:", err.message);
+      return res.status(500).json({ error: "Failed to retrieve course" });
+    }
+
+    if (!course) {
+      return res.status(404).json({ error: "Course not found" });
+    }
+
+    res.status(200).json(course);
+  });
+});
+
+// API Endpoint zum Löschen eines Kurses
+app.delete("/api/courses/:id", authenticateToken, (req, res) => {
+  const { id } = req.params;
+  const userId = req.user.id;
+  const userRole = req.user.role;
+
+  // Überprüfen, ob der Benutzer berechtigt ist, den Kurs zu löschen
+  const checkQuery = `SELECT * FROM courses WHERE id = ?`;
+  db.get(checkQuery, [id], (err, course) => {
+    if (err) {
+      console.error("Database error:", err.message);
+      return res.status(500).json({ error: "Failed to retrieve course" });
+    }
+
+    if (!course) {
+      return res.status(404).json({ error: "Course not found" });
+    }
+
+    // Prüfen, ob der Benutzer der Ersteller des Kurses oder ein Admin ist
+    if (course.userId !== userId && userRole !== "admin") {
+      return res
+        .status(403)
+        .json({ error: "You are not authorized to delete this course" });
+    }
+
+    // Kurs löschen
+    const deleteQuery = `DELETE FROM courses WHERE id = ?`;
+    db.run(deleteQuery, [id], function (err) {
+      if (err) {
+        console.error("Database error:", err.message);
+        return res.status(500).json({ error: "Failed to delete course" });
+      }
+
+      res
+        .status(200)
+        .json({ message: `Course with ID ${id} deleted successfully` });
+    });
+  });
+});
+
+// FORUM SECTION:
+//-----------------
+
+// GET: Alle Beiträge abrufen inklusive Anzahl der Kommentare
+app.get("/forum", (req, res) => {
+  const query = `SELECT posts.*, COUNT(comments.id) AS commentCount 
+                 FROM posts 
+                 LEFT JOIN comments ON posts.id = comments.postId 
+                 GROUP BY posts.id`;
+
+  db.all(query, (err, rows) => {
+    if (err) {
+      return res
+        .status(500)
+        .json({ error: "Database error when retrieving posts" });
+    }
+    res.json(rows);
+  });
+});
+
+// POST: Neuen Beitrag hinzufügen
+app.post("/forum", (req, res) => {
+  const { title, content, username } = req.body;
+
+  if (!title || !content || !username) {
+    return res
+      .status(400)
+      .json({ error: "Title, content, and username are required" });
+  }
+
+  const query = `INSERT INTO posts (title, content, username, likes, reported) VALUES (?, ?, ?, 0, 0)`;
+  db.run(query, [title, content, username], function (err) {
+    if (err) {
+      return res.status(500).json({ error: "Error adding the post" });
+    }
+    res.status(201).json({ id: this.lastID, title, content, username });
+  });
+});
+
+// POST: Kommentar hinzufügen
+app.post("/forum/comment", (req, res) => {
+  const { postId, comment, username } = req.body;
+
+  if (!postId || !comment || !username) {
+    return res
+      .status(400)
+      .json({ error: "PostId, comment, and username are required" });
+  }
+
+  const query = `INSERT INTO comments (postId, content, author) VALUES (?, ?, ?)`;
+  db.run(query, [postId, comment, username], function (err) {
+    if (err) {
+      console.error("Error adding comment:", err.message);
+      return res.status(500).json({ error: "Error adding the comment" });
+    }
+    res.status(201).json({ id: this.lastID, comment, username });
+  });
+});
+
+// GET: Kommentare zu einem Beitrag abrufen
+app.get("/forum/comments/:postId", (req, res) => {
+  const { postId } = req.params;
+
+  const query = `SELECT * FROM comments WHERE postId = ?`;
+  db.all(query, [postId], (err, rows) => {
+    if (err) {
+      return res.status(500).json({ error: "Error retrieving comments" });
+    }
+    res.json(rows);
+  });
+});
+
+// POST: Beitrag liken
+app.post("/forum/like/:id", (req, res) => {
+  const { id } = req.params;
+
+  const query = `UPDATE posts SET likes = likes + 1 WHERE id = ?`;
+  db.run(query, [id], (err) => {
+    if (err) {
+      return res.status(500).json({ error: "Error liking the post" });
+    }
+    res.json({ message: "Post liked successfully" });
+  });
+});
+
+// POST: Beitrag melden
+app.post("/forum/report/:id", (req, res) => {
+  const { id } = req.params;
+
+  const query = `UPDATE posts SET reported = 1 WHERE id = ?`;
+  db.run(query, [id], (err) => {
+    if (err) {
+      return res.status(500).json({ error: "Error reporting the post" });
+    }
+    res.json({ message: "Post reported successfully" });
+  });
+});
+
 // Start Server
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
