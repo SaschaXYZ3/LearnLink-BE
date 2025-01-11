@@ -1,6 +1,7 @@
 const sqlite3 = require("sqlite3").verbose();
 const bcrypt = require("bcrypt");
-const db = new sqlite3.Database("../databases/user.db", (err) => {
+
+const db = new sqlite3.Database("./databases/user.db", (err) => {
   if (err) {
     console.error("Error connecting to SQLite database:", err.message);
   } else {
@@ -9,8 +10,13 @@ const db = new sqlite3.Database("../databases/user.db", (err) => {
 });
 
 db.serialize(() => {
-  // drop the old users table
-  //db.run("DROP TABLE IF EXISTS users");
+  // Create roles table
+  db.run(`
+    CREATE TABLE IF NOT EXISTS roles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE
+    )
+  `);
 
   // Create users table
   db.run(`
@@ -19,72 +25,27 @@ db.serialize(() => {
       username TEXT UNIQUE,
       email TEXT,
       password TEXT,
-      role TEXT,
+      roleId INTEGER,
       birthDate TEXT,
-      profileImage TEXT
+      profileImage TEXT,
+      FOREIGN KEY (roleId) REFERENCES roles (id)
     )
   `);
 
-  db.run(`
-    CREATE TABLE IF NOT EXISTS contact_requests (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      email TEXT NOT NULL,
-      message TEXT NOT NULL,
-      date TEXT DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
+  // Add initial roles
+  const roles = ["admin", "tutor", "student"];
+  roles.forEach((role) => {
+    db.run(`INSERT OR IGNORE INTO roles (name) VALUES (?)`, [role], (err) => {
+      if (err) {
+        console.error(`Error inserting role '${role}':`, err.message);
+      }
+    });
+  });
 
-  // Drop the old courses table if needed
-  //db.run("DROP TABLE IF EXISTS courses");
-
-  // Create courses table with userId
-  db.run(`
-    CREATE TABLE IF NOT EXISTS courses (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      title TEXT NOT NULL,
-      category TEXT NOT NULL,
-      subcategory TEXT NOT NULL,
-      level TEXT NOT NULL,
-      maxStudents INTEGER NOT NULL,
-      tutoringType TEXT,
-      date TEXT NOT NULL,
-      time TEXT NOT NULL,
-      meetingLink TEXT NOT NULL,
-      userId INTEGER NOT NULL,
-      FOREIGN KEY (userId) REFERENCES users (id)
-    )
-  `);
-
-  db.run(`
-    CREATE TABLE IF NOT EXISTS posts (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT NOT NULL,
-    content TEXT NOT NULL,
-    username TEXT NOT NULL,
-    likes INTEGER DEFAULT 0,
-    reported INTEGER DEFAULT 0
-    )
-  `);
-
-  // Tabelle für Kommentare (Posts verlinken mit Post-ID)
-  db.run(`
-    CREATE TABLE IF NOT EXISTS comments (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      postId INTEGER,
-      content TEXT NOT NULL,
-      author TEXT NOT NULL,
-      FOREIGN KEY (postId) REFERENCES posts(id)
-    )
-  `);
-
-
-  // AAdd admin user if not already present
+  // Add admin user if not already present
   const adminUsername = "admin";
   const adminEmail = "admin@learnlink.at";
-  const adminPassword = bcrypt.hashSync("admin123", 10); // Passwort hashen
-  const adminRole = "admin";
-  const adminBirthDate = "2000-01-01";
+  const adminPassword = bcrypt.hashSync("admin123", 10); // Password hashing
 
   db.get(
     `SELECT * FROM users WHERE username = ?`,
@@ -101,33 +62,36 @@ db.serialize(() => {
       if (row) {
         console.log("Admin user already exists, skipping insertion.");
       } else {
-        db.run(
-          `INSERT INTO users (username, email, password, role, birthDate)
-           VALUES (?, ?, ?, ?, ?)`,
-          [adminUsername, adminEmail, adminPassword, adminRole, adminBirthDate],
-          (err) => {
+        db.get(
+          `SELECT id FROM roles WHERE name = ?`,
+          ["admin"],
+          (err, role) => {
             if (err) {
-              console.error("Error while adding admin user:", err.message);
-            } else {
-              console.log("Admin user added successfully!");
+              console.error("Error fetching admin role:", err.message);
+              return;
             }
+            if (!role) {
+              console.error("Admin role not found in roles table.");
+              return;
+            }
+
+            db.run(
+              `INSERT INTO users (username, email, password, roleId, birthDate)
+             VALUES (?, ?, ?, ?, ?)`,
+              [adminUsername, adminEmail, adminPassword, role.id, "2000-01-01"],
+              (err) => {
+                if (err) {
+                  console.error("Error while adding admin user:", err.message);
+                } else {
+                  console.log("Admin user added successfully!");
+                }
+              }
+            );
           }
         );
       }
     }
   );
 });
-
-{
-  /*}
-db.run("ALTER TABLE users ADD COLUMN profileImage TEXT", (err) => {
-  if (err) {
-    console.error("Error adding profileImage column:", err.message);
-  } else {
-    console.log("profileImage column added successfully.");
-  }
-});
-*/
-}
 
 module.exports = db;
