@@ -1,7 +1,7 @@
 const sqlite3 = require("sqlite3").verbose();
 const bcrypt = require("bcrypt");
 
-const db = new sqlite3.Database("./databases/user.db", (err) => {
+const db = new sqlite3.Database("./databases/database.db", (err) => {
   if (err) {
     console.error("Error connecting to SQLite database:", err.message);
   } else {
@@ -65,7 +65,40 @@ db.serialize(() => {
       userId INTEGER,
       FOREIGN KEY(userId) REFERENCES users(id)
     )
+
   `);
+
+  //FORUM
+  db.run(`
+      CREATE TABLE IF NOT EXISTS posts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      username TEXT NOT NULL,
+      likes INTEGER DEFAULT 0,
+      reported INTEGER DEFAULT 0
+      )
+    `);
+
+  // Tabelle für Kommentare (Posts verlinken mit Post-ID)
+  db.run(`
+      CREATE TABLE IF NOT EXISTS comments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        postId INTEGER,
+        content TEXT NOT NULL,
+        author TEXT NOT NULL,
+        FOREIGN KEY (postId) REFERENCES posts(id)
+      )
+    `);
+  db.run(`
+      CREATE TABLE IF NOT EXISTS contact_requests (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        email TEXT NOT NULL,
+        message TEXT NOT NULL,
+        date TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
 
   // Add initial roles
   const roles = ["admin", "tutor", "student"];

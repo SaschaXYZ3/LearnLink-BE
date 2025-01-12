@@ -1,8 +1,15 @@
 const express = require("express");
 const cors = require("cors");
+const sqlite3 = require("sqlite3").verbose();
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-const db = require("./database");
+const db = new sqlite3.Database("./databases/database.db", (err) => {
+  if (err) {
+    console.error("Error connecting to SQLite database:", err.message);
+  } else {
+    console.log("Connected to the SQLite database.");
+  }
+});
 
 const SECRET_KEY =
   "XdvZ1GSeTsE48kPKCo3zqkZb2sLFnUbsfoqwFL2SN4pn6EcEyFS9IEI3evPvwo59";
@@ -161,11 +168,6 @@ app.get("/admin", authenticateToken, (req, res) => {
       res.json(rows);
     }
   );
-});
-
-// Error handling for unknown routes
-app.use((req, res) => {
-  res.status(404).json({ error: "Route not found" });
 });
 
 // API Endpoint um einen Kurs hinzuzufügen
@@ -447,4 +449,9 @@ app.post("/forum/report/:id", (req, res) => {
 // Start Server
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
+});
+
+// Error handling for unknown routes
+app.use((req, res) => {
+  res.status(404).json({ error: "Route not found" });
 });
