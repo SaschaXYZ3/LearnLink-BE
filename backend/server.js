@@ -1,9 +1,15 @@
 const express = require("express");
 const cors = require("cors");
-const db = require("./database");
+const sqlite3 = require("sqlite3").verbose();
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-const path = require("path");
+const db = new sqlite3.Database("./databases/database.db", (err) => {
+  if (err) {
+    console.error("Error connecting to SQLite database:", err.message);
+  } else {
+    console.log("Connected to the SQLite database.");
+  }
+});
 
 const SECRET_KEY =
   "XdvZ1GSeTsE48kPKCo3zqkZb2sLFnUbsfoqwFL2SN4pn6EcEyFS9IEI3evPvwo59";
@@ -24,28 +30,16 @@ const authenticateToken = (req, res, next) => {
   }
 
   const token = authHeader.split(" ")[1]; // Bearer <token>
-
   jwt.verify(token, SECRET_KEY, (err, user) => {
     if (err) {
       return res.status(401).json({ error: "Invalid or expired token" });
     }
-
     req.user = user; // Attach user data to request
     next(); // Proceed to the next middleware or route handler
   });
 };
 
-// API Endpoints
-app.get("/api/message", (req, res) => {
-  res.json({ message: "Hello from the backend!" });
-});
-
-// Protected route example --> use for div. subpages
-app.get("/api/protected", authenticateToken, (req, res) => {
-  res.json({ message: "This is a protected route", user: req.user });
-});
-
-// Validation function for register input
+// Validation function for registration input
 const validateRegisterInput = ({ username, email, password }) => {
   if (!username || !email || !password) {
     return "All fields are required";
@@ -59,52 +53,62 @@ const validateRegisterInput = ({ username, email, password }) => {
   return null;
 };
 
+// API Endpoints
+app.get("/api/message", (req, res) => {
+  res.json({ message: "Hello from the backend!" });
+});
+
+// Protected route example --> use for div. subpages
+app.get("/api/protected", authenticateToken, (req, res) => {
+  res.json({ message: "This is a protected route", user: req.user });
+});
+
 // Register endpoint
 app.post("/register", (req, res) => {
-  console.log("Request Body:", req.body);
   const { username, email, password, role, birthDate } = req.body;
 
-  // Validate input
   const validationError = validateRegisterInput({ username, email, password });
   if (validationError) {
     return res.status(400).json({ error: validationError });
   }
 
-  // only admins are allowed to create users with the the role 'admin'
-  const requestedRole = role === "admin" ? "admin" : role;
-
-  const hashedPassword = bcrypt.hashSync(password, 8); // Hash password
-  const query = `INSERT INTO users (username, email, password, role, birthDate) VALUES (?, ?, ?, ?, ?)`; // Corrected query
-
-  // Insert user into the database
-  db.run(
-    query,
-    [username, email, hashedPassword, requestedRole, birthDate],
-    function (err) {
-      if (err) {
-        console.error("Database error:", err.message);
-        if (err.code === "SQLITE_CONSTRAINT") {
-          return res.status(400).json({ error: "Username already exists" });
-        }
-        return res.status(500).json({ error: "Internal server error" });
+  const hashedPassword = bcrypt.hashSync(password, 8);
+  db.get(
+    `SELECT id FROM roles WHERE name = ?`,
+    [role || "student"],
+    (err, roleRow) => {
+      if (err || !roleRow) {
+        return res.status(400).json({ error: "Invalid role specified" });
       }
 
-      // Generate JWT token after successful user creation
-      const token = jwt.sign(
-        { id: this.lastID, username, role: requestedRole }, // Payload
-        SECRET_KEY, // Secret key
-        { expiresIn: 86400 } // Token validity
-      );
+      const roleId = roleRow.id;
+      db.run(
+        `INSERT INTO users (username, email, password, roleId, birthDate) VALUES (?, ?, ?, ?, ?)`,
+        [username, email, hashedPassword, roleId, birthDate],
+        function (err) {
+          if (err) {
+            if (err.code === "SQLITE_CONSTRAINT") {
+              return res.status(400).json({ error: "Username already exists" });
+            }
+            return res.status(500).json({ error: "Internal server error" });
+          }
 
-      // Respond with user details and the token
-      res.json({
-        id: this.lastID, // Use the lastID from the db insertion
-        username,
-        email,
-        role: requestedRole,
-        birthDate,
-        token, // JWT token returned
-      });
+          const token = jwt.sign(
+            { id: this.lastID, username, role: role || "student" },
+            SECRET_KEY,
+            { expiresIn: 86400 }
+          );
+
+          res.json({
+            id: this.lastID,
+            username,
+            email,
+            role,
+            birthDate,
+            token,
+          });
+        }
+      );
     }
   );
 });
@@ -119,69 +123,68 @@ app.post("/login", (req, res) => {
       .json({ error: "Both username and password are required" });
   }
 
-  // SQL query to fetch user by username
-  const query = `SELECT * FROM users WHERE username = ?`;
+  db.get(
+    `SELECT users.*, roles.name AS role FROM users JOIN roles ON users.roleId = roles.id WHERE username = ?`,
+    [username],
+    (err, user) => {
+      if (err || !user) {
+        return res.status(401).json({ error: "Invalid credentials" });
+      }
 
-  db.get(query, [username], (err, user) => {
-    if (err) {
-      return res.status(500).json({ error: "Internal server error" });
+      if (!bcrypt.compareSync(password, user.password)) {
+        return res.status(401).json({ error: "Invalid credentials" });
+      }
+
+      const token = jwt.sign(
+        { id: user.id, username: user.username, role: user.role },
+        SECRET_KEY,
+        { expiresIn: 86400 }
+      );
+
+      res.json({
+        id: user.id,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        birthDate: user.birthDate,
+        token,
+      });
     }
-
-    if (!user) {
-      return res.status(401).json({ error: "Invalid credentials" });
-    }
-
-    // Compare hashed password with the provided password
-    const passwordIsValid = bcrypt.compareSync(password, user.password);
-    if (!passwordIsValid) {
-      return res.status(401).json({ error: "Invalid credentials" });
-    }
-
-    // Generate JWT token
-    const token = jwt.sign(
-      { id: user.id, username: user.username, role: user.role }, // Payload
-      SECRET_KEY, // Secret key
-      { expiresIn: 86400 } // Token validity
-    );
-
-    // Successful login, return user info and JWT token
-    res.json({
-      id: user.id,
-      username: user.username,
-      email: user.email,
-      role: user.role,
-      birthDate: user.birthDate,
-      token, // JWT token returned
-    });
-  });
+  );
 });
 
-// Route zum Abrufen aller Benutzer (für das Admin Dashboard)
+// Protected route example
+app.get("/api/protected", authenticateToken, (req, res) => {
+  res.json({ message: "This is a protected route", user: req.user });
+});
+
+// Get all users (Admin Dashboard)
 app.get("/admin", authenticateToken, (req, res) => {
-  // Sicherstellen, dass der Benutzer ein Admin ist
   if (req.user.role !== "admin") {
     return res
       .status(403)
       .json({ error: "Access denied, you are not an admin" });
   }
 
-  // SQL-Abfrage, um alle Benutzer aus der Tabelle zu holen
-  const query = `SELECT id, username, email, role, birthDate FROM users`;
-
-  // Alle Benutzer aus der Datenbank abfragen
-  db.all(query, [], (err, rows) => {
-    if (err) {
-      console.error("Database error:", err.message);
-      return res.status(500).json({ error: "Failed to retrieve users" });
+  db.all(
+    `SELECT users.id, username, email, roles.name AS role, birthDate
+     FROM users
+     JOIN roles ON users.roleId = roles.id`,
+    [],
+    (err, rows) => {
+      if (err) {
+        return res.status(500).json({ error: "Failed to retrieve users" });
+      }
+      res.json(rows);
     }
-
-    // Erfolgreiche Antwort mit den Benutzerdaten
-    res.status(200).json(rows);
-  });
+  );
 });
 
 // API Endpoint um einen Kurs hinzuzufügen
 app.post("/api/courses", authenticateToken, (req, res) => {
+  console.log("Received request to add a course");
+
+  // Destrukturierung der Werte aus dem Request Body
   const {
     title,
     category,
@@ -195,7 +198,9 @@ app.post("/api/courses", authenticateToken, (req, res) => {
   } = req.body;
 
   const userId = req.user.id; // Die userId des eingeloggten Benutzers
+  console.log("Authenticated userId: ", userId);
 
+  // Überprüfung, ob alle Felder im Request vorhanden sind
   if (
     !title ||
     !category ||
@@ -206,13 +211,28 @@ app.post("/api/courses", authenticateToken, (req, res) => {
     !time ||
     !meetingLink
   ) {
+    console.log("Missing required fields");
     return res.status(400).json({ error: "All fields are required" });
   }
 
-  const query = `
-    INSERT INTO courses (
-      title, category, subcategory, level, maxStudents, tutoringType, date, time, meetingLink, userId
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+  // SQL Query zum Hinzufügen des Kurses
+  const query = `INSERT INTO courses (
+    title, category, subcategory, level, maxStudents, tutoringType, date, time, meetingLink, userId
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
+  // Logging der Werte, bevor die Datenbankabfrage ausgeführt wird
+  console.log("Course Data:", {
+    title,
+    category,
+    subcategory,
+    level,
+    maxStudents,
+    tutoringType,
+    date,
+    time,
+    meetingLink,
+    userId,
+  });
 
   db.run(
     query,
@@ -234,6 +254,8 @@ app.post("/api/courses", authenticateToken, (req, res) => {
         return res.status(500).json({ error: "Failed to add the course" });
       }
 
+      // Erfolgreiches Hinzufügen des Kurses
+      console.log("Course added successfully, ID:", this.lastID);
       res
         .status(201)
         .json({ message: "Course added successfully", courseId: this.lastID });
@@ -243,11 +265,9 @@ app.post("/api/courses", authenticateToken, (req, res) => {
 
 // API Endpoint zum Abrufen aller Kurse
 app.get("/api/courses", authenticateToken, (req, res) => {
-  const query = `
-    SELECT courses.*, users.username AS tutor
+  const query = `SELECT courses.*, users.username AS tutor
     FROM courses
-    JOIN users ON courses.userId = users.id
-  `;
+    JOIN users ON courses.userId = users.id`;
 
   db.all(query, [], (err, rows) => {
     if (err) {
@@ -263,9 +283,7 @@ app.get("/api/courses", authenticateToken, (req, res) => {
 app.get("/api/courses/mine", authenticateToken, (req, res) => {
   const userId = req.user.id;
 
-  const query = `
-    SELECT * FROM courses WHERE userId = ?
-  `;
+  const query = `SELECT * FROM courses WHERE userId = ?`;
 
   db.all(query, [userId], (err, rows) => {
     if (err) {
@@ -281,12 +299,10 @@ app.get("/api/courses/mine", authenticateToken, (req, res) => {
 app.get("/api/courses/:id", authenticateToken, (req, res) => {
   const { id } = req.params;
 
-  const query = `
-    SELECT courses.*, users.username AS tutor
+  const query = `SELECT courses.*, users.username AS tutor
     FROM courses
     JOIN users ON courses.userId = users.id
-    WHERE courses.id = ?
-  `;
+    WHERE courses.id = ?`;
 
   db.get(query, [id], (err, course) => {
     if (err) {
@@ -342,23 +358,23 @@ app.delete("/api/courses/:id", authenticateToken, (req, res) => {
   });
 });
 
-
 // FORUM SECTION:
 //-----------------
 
 // GET: Alle Beiträge abrufen inklusive Anzahl der Kommentare
 app.get("/forum", (req, res) => {
-  const query = `
-      SELECT posts.*, COUNT(comments.id) AS commentCount 
-      FROM posts 
-      LEFT JOIN comments ON posts.id = comments.postId 
-      GROUP BY posts.id
-  `;
+  const query = `SELECT posts.*, COUNT(comments.id) AS commentCount 
+                 FROM posts 
+                 LEFT JOIN comments ON posts.id = comments.postId 
+                 GROUP BY posts.id`;
+
   db.all(query, (err, rows) => {
-      if (err) {
-          return res.status(500).json({ error: "Datenbankfehler beim Abrufen der Beiträge" });
-      }
-      res.json(rows);
+    if (err) {
+      return res
+        .status(500)
+        .json({ error: "Database error when retrieving posts" });
+    }
+    res.json(rows);
   });
 });
 
@@ -367,15 +383,17 @@ app.post("/forum", (req, res) => {
   const { title, content, username } = req.body;
 
   if (!title || !content || !username) {
-      return res.status(400).json({ error: "Titel, Inhalt und Username sind erforderlich." });
+    return res
+      .status(400)
+      .json({ error: "Title, content, and username are required" });
   }
 
   const query = `INSERT INTO posts (title, content, username, likes, reported) VALUES (?, ?, ?, 0, 0)`;
   db.run(query, [title, content, username], function (err) {
-      if (err) {
-          return res.status(500).json({ error: "Fehler beim Hinzufügen des Beitrags" });
-      }
-      res.status(201).json({ id: this.lastID, title, content, username });
+    if (err) {
+      return res.status(500).json({ error: "Error adding the post" });
+    }
+    res.status(201).json({ id: this.lastID, title, content, username });
   });
 });
 
@@ -384,16 +402,18 @@ app.post("/forum/comment", (req, res) => {
   const { postId, comment, username } = req.body;
 
   if (!postId || !comment || !username) {
-      return res.status(400).json({ error: "PostId, Kommentar und Username sind erforderlich." });
+    return res
+      .status(400)
+      .json({ error: "PostId, comment, and username are required" });
   }
 
   const query = `INSERT INTO comments (postId, content, author) VALUES (?, ?, ?)`;
   db.run(query, [postId, comment, username], function (err) {
-      if (err) {
-          console.error("Fehler beim Hinzufügen des Kommentars:", err.message);
-          return res.status(500).json({ error: "Fehler beim Hinzufügen des Kommentars" });
-      }
-      res.status(201).json({ id: this.lastID, comment, username });
+    if (err) {
+      console.error("Error adding comment:", err.message);
+      return res.status(500).json({ error: "Error adding the comment" });
+    }
+    res.status(201).json({ id: this.lastID, comment, username });
   });
 });
 
@@ -403,10 +423,10 @@ app.get("/forum/comments/:postId", (req, res) => {
 
   const query = `SELECT * FROM comments WHERE postId = ?`;
   db.all(query, [postId], (err, rows) => {
-      if (err) {
-          return res.status(500).json({ error: "Fehler beim Abrufen der Kommentare" });
-      }
-      res.json(rows);
+    if (err) {
+      return res.status(500).json({ error: "Error retrieving comments" });
+    }
+    res.json(rows);
   });
 });
 
@@ -416,10 +436,10 @@ app.post("/forum/like/:id", (req, res) => {
 
   const query = `UPDATE posts SET likes = likes + 1 WHERE id = ?`;
   db.run(query, [id], (err) => {
-      if (err) {
-          return res.status(500).json({ error: "Fehler beim Liken des Beitrags" });
-      }
-      res.json({ message: "Beitrag erfolgreich geliked" });
+    if (err) {
+      return res.status(500).json({ error: "Error liking the post" });
+    }
+    res.json({ message: "Post liked successfully" });
   });
 });
 
@@ -429,20 +449,19 @@ app.post("/forum/report/:id", (req, res) => {
 
   const query = `UPDATE posts SET reported = 1 WHERE id = ?`;
   db.run(query, [id], (err) => {
-      if (err) {
-          return res.status(500).json({ error: "Fehler beim Melden des Beitrags" });
-      }
-      res.json({ message: "Beitrag erfolgreich gemeldet" });
+    if (err) {
+      return res.status(500).json({ error: "Error reporting the post" });
+    }
+    res.json({ message: "Post reported successfully" });
   });
 });
-
-// Fehlerbehandlung für nicht existierende Routen
-app.use((req, res) => {
-  res.status(404).json({ error: "Route nicht gefunden" });
-});
-
 
 // Start Server
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
+});
+
+// Error handling for unknown routes
+app.use((req, res) => {
+  res.status(404).json({ error: "Route not found" });
 });
