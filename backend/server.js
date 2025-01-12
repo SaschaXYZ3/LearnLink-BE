@@ -53,6 +53,16 @@ const validateRegisterInput = ({ username, email, password }) => {
   return null;
 };
 
+// API Endpoints
+app.get("/api/message", (req, res) => {
+  res.json({ message: "Hello from the backend!" });
+});
+
+// Protected route example --> use for div. subpages
+app.get("/api/protected", authenticateToken, (req, res) => {
+  res.json({ message: "This is a protected route", user: req.user });
+});
+
 // Register endpoint
 app.post("/register", (req, res) => {
   const { username, email, password, role, birthDate } = req.body;
