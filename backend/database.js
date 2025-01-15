@@ -100,6 +100,75 @@ db.serialize(() => {
       )
     `);
 
+  db.run(`
+      CREATE TABLE IF NOT EXISTS course_reviews (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        courseId INTEGER NOT NULL,
+        userId INTEGER NOT NULL,
+        rating INTEGER CHECK(rating BETWEEN 1 AND 5),
+        comment TEXT,
+        date TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (courseId) REFERENCES courses (id),
+        FOREIGN KEY (userId) REFERENCES users (id)
+      )
+    `);
+
+  db.run(`
+      CREATE TABLE IF NOT EXISTS favorites (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        userId INTEGER NOT NULL,
+        courseId INTEGER NOT NULL,
+        UNIQUE(userId, courseId), 
+        FOREIGN KEY (userId) REFERENCES users(id),
+        FOREIGN KEY (courseId) REFERENCES courses(id)
+      )
+    `);
+
+  db.run(`
+      CREATE TABLE IF NOT EXISTS course_students (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        courseId INTEGER NOT NULL,
+        userId INTEGER NOT NULL,
+        date_enrolled TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (courseId) REFERENCES courses(id) ON DELETE CASCADE,
+        FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(courseId, userId)
+      )
+    `);
+
+  db.run(`
+      CREATE TABLE IF NOT EXISTS course_availability (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        courseId INTEGER NOT NULL,
+        maxStudents INTEGER NOT NULL,
+        actualStudents INTEGER DEFAULT 0,
+        FOREIGN KEY (courseId) REFERENCES courses(id) ON DELETE CASCADE,
+        UNIQUE(courseId)
+      )
+    `);
+
+  /*
+  db.run("DROP TABLE IF EXISTS course_enrollment", (err) => {
+      if (err) {
+        console.error("Error dropping users table:", err.message);
+      } else {
+        console.log("Users table dropped (if it existed)");
+      }
+    });
+    */
+
+  db.run(`
+      CREATE TABLE IF NOT EXISTS course_enrollment (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,  
+        courseId INTEGER NOT NULL,             
+        userId INTEGER NOT NULL,               
+        status INTEGER NOT NULL DEFAULT 3,     
+        date DATETIME DEFAULT CURRENT_TIMESTAMP,            
+        FOREIGN KEY(courseId) REFERENCES courses(id), 
+        FOREIGN KEY(userId) REFERENCES users(id)
+      )
+    `);
+
   // Add initial roles
   const roles = ["admin", "tutor", "student"];
   roles.forEach((role) => {
@@ -108,6 +177,31 @@ db.serialize(() => {
         console.error(`Error inserting role '${role}':`, err.message);
       }
     });
+  });
+
+  // Tabelle booking_status erstellen, falls sie noch nicht existiert
+  db.run(
+    `
+  CREATE TABLE IF NOT EXISTS booking_status (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    status TEXT NOT NULL
+  );
+`,
+    (err) => {
+      if (err) {
+        console.error("Fehler beim Erstellen der booking_status-Tabelle:", err);
+      } else {
+        console.log("Tabelle booking_status erfolgreich erstellt.");
+      }
+    }
+  );
+
+  // Füge die Standardstatus-Werte in die Tabelle booking_status ein, falls sie noch nicht vorhanden sind.
+  const statuses = ["requested", "booked", "completed", "rejected"];
+  statuses.forEach((status) => {
+    db.run("INSERT OR IGNORE INTO booking_status (status) VALUES (?)", [
+      status,
+    ]);
   });
 
   // Add admin user if not already present
@@ -162,8 +256,9 @@ db.serialize(() => {
   );
 
   // Testdaten (kann zum Testen verwendet werden, einfach den Block auskommentieren)
-  /*
-  const users = [
+
+  // Definiere alle Benutzer
+  /*const users = [
     {
       username: "admin",
       role: "admin",
@@ -202,6 +297,7 @@ db.serialize(() => {
     }, // Student 3
   ];
 
+  // Definiere alle Kurse
   const courses = [
     {
       title: "Advanced Python",
@@ -277,96 +373,35 @@ db.serialize(() => {
     },
   ];
 
-  // Insert users
-  db.run(
-    `INSERT INTO users (username, email, password, roleId, birthDate) VALUES (?, ?, ?, ?, ?)`,
-    [
-      "admin",
-      "admin@learnlink.at",
-      bcrypt.hashSync("admin123", 10),
-      1,
-      "2000-01-01",
-    ],
-    (err) => {
-      if (err) {
-        console.error("Error inserting admin user:", err.message);
-      }
+  // Benutzer einfügen
+  users.forEach((user, index) => {
+    let roleId = 0;
+    if (user.role === "admin") {
+      roleId = 1;
+    } else if (user.role === "tutor") {
+      roleId = 2;
+    } else if (user.role === "student") {
+      roleId = 3;
     }
-  );
 
-  // Insert tutors (roleId = 2)
-  const tutorUsers = [
-    {
-      username: "Heinz Neunmalklug",
-      email: "heinz@example.com",
-      password: "password123",
-    },
-    {
-      username: "Franz Schule",
-      email: "franz@example.com",
-      password: "password123",
-    },
-  ];
-
-  tutorUsers.forEach((user, index) => {
     db.run(
       `INSERT INTO users (username, email, password, roleId, birthDate) VALUES (?, ?, ?, ?, ?)`,
       [
         user.username,
         user.email,
         bcrypt.hashSync(user.password, 10),
-        2,
-        "1980-01-01",
-      ],
-      (err) => {
-        if (err) {
-          console.error(`Error inserting tutor ${user.username}:`, err.message);
-        }
-      }
-    );
-  });
-
-  // Insert students (roleId = 3)
-  const studentUsers = [
-    {
-      username: "Camilla Studiosa",
-      email: "camilla@example.com",
-      password: "student123",
-    },
-    {
-      username: "Christian Klug",
-      email: "christian@example.com",
-      password: "student123",
-    },
-    {
-      username: "Viktoria Lernreich",
-      email: "viktoria@example.com",
-      password: "student123",
-    },
-  ];
-
-  studentUsers.forEach((user) => {
-    db.run(
-      `INSERT INTO users (username, email, password, roleId, birthDate) VALUES (?, ?, ?, ?, ?)`,
-      [
-        user.username,
-        user.email,
-        bcrypt.hashSync(user.password, 10),
-        3,
+        roleId,
         "2000-01-01",
       ],
       (err) => {
         if (err) {
-          console.error(
-            `Error inserting student ${user.username}:`,
-            err.message
-          );
+          console.error(`Error inserting ${user.username}:`, err.message);
         }
       }
     );
   });
 
-  // Insert courses (with correct userId for tutors)
+  // Kurse einfügen und die Verfügbarkeit in 'course_availability' hinzufügen
   courses.forEach((course) => {
     db.run(
       `INSERT INTO courses (title, category, subcategory, level, maxStudents, tutoringType, date, time, meetingLink, userId) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -382,16 +417,33 @@ db.serialize(() => {
         course.meetingLink,
         course.userId,
       ],
-      (err) => {
+      function (err) {
         if (err) {
           console.error("Error inserting course:", err.message);
+        } else {
+          const courseId = this.lastID; // Kurs-ID nach Einfügen des Kurses
+          const insertAvailabilityQuery = `
+          INSERT INTO course_availability (courseId, maxStudents, actualStudents)
+          VALUES (?, ?, ?)
+        `;
+          db.run(
+            insertAvailabilityQuery,
+            [courseId, course.maxStudents, 0], // Setze initial 0 für actualStudents
+            (err) => {
+              if (err) {
+                console.error(
+                  "Error inserting into course_availability:",
+                  err.message
+                );
+              }
+            }
+          );
         }
       }
     );
   });
 
-  console.log("Test data added successfully!");
-  */
+  console.log("Test data added successfully!");*/
 });
 
 module.exports = db;
