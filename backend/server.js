@@ -586,6 +586,99 @@ app.get("/api/courses/:courseId/reviews", async (req, res) => {
   }
 });
 
+app.get("/api/tutors/:tutorId/pending-bookings", (req, res) => {
+  const { tutorId } = req.params;
+
+  const query = `
+    SELECT 
+        ce.id AS enrollmentId,
+        u.username AS studentName,
+        u.email AS studentEmail,  -- E-Mail des Studenten
+        u.ProfileImage AS studentProfileImage,  -- Profilbild des Studenten
+        c.id AS courseId,
+        c.title AS courseName,  -- Titel des Kurses
+        bs.status AS bookingStatus,
+        c.category,
+        c.subcategory,
+        c.level,
+        c.maxStudents,
+        c.tutoringType,
+        c.date AS courseDate,
+        c.time AS courseTime,
+        c.meetingLink
+    FROM 
+        course_enrollment ce
+    JOIN 
+        users u ON ce.userId = u.id
+    JOIN 
+        courses c ON ce.courseId = c.id
+    JOIN 
+        booking_status bs ON ce.status = bs.id
+    WHERE 
+        c.userId = ? AND ce.status = 3;
+  `;
+
+  db.all(query, [tutorId], (err, rows) => {
+    if (err) {
+      console.error("Error fetching pending bookings:", err.message);
+      res.status(500).json({ error: "Failed to fetch pending bookings" });
+    } else {
+      res.status(200).json(rows);
+    }
+  });
+});
+
+// POST /api/enrollments/:enrollmentId/accept
+app.post("/api/enrollments/:enrollmentId/accept", async (req, res) => {
+  const { enrollmentId } = req.params;
+
+  try {
+    const enrollment = await CourseEnrollment.findById(enrollmentId);
+
+    if (!enrollment) {
+      return res.status(404).json({ error: "Enrollment not found" });
+    }
+
+    const course = await CourseAvailability.findById(enrollment.courseId);
+
+    if (course.actualStudents >= course.maxStudents) {
+      return res.status(400).json({ error: "Course is already full" });
+    }
+
+    enrollment.status = "Accepted";
+    await enrollment.save();
+
+    course.actualStudents += 1;
+    await course.save();
+
+    res.status(200).json({ message: "Enrollment accepted", enrollment });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to accept enrollment" });
+  }
+});
+
+// POST /api/enrollments/:enrollmentId/reject
+app.post("/api/enrollments/:enrollmentId/reject", async (req, res) => {
+  const { enrollmentId } = req.params;
+
+  try {
+    const enrollment = await CourseEnrollment.findById(enrollmentId);
+
+    if (!enrollment) {
+      return res.status(404).json({ error: "Enrollment not found" });
+    }
+
+    enrollment.status = "Rejected";
+    await enrollment.save();
+
+    res.status(200).json({ message: "Enrollment rejected", enrollment });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to reject enrollment" });
+  }
+});
+
 // FORUM SECTION:
 //-----------------
 
