@@ -421,7 +421,7 @@ app.post("/forum/comment", (req, res) => {
 app.get("/forum/comments/:postId", (req, res) => {
   const { postId } = req.params;
 
-  const query = `SELECT * FROM comments WHERE postId = ?`;
+  const query = `SELECT content, author AS username FROM comments WHERE postId = ?`;
   db.all(query, [postId], (err, rows) => {
     if (err) {
       return res.status(500).json({ error: "Error retrieving comments" });
@@ -455,6 +455,29 @@ app.post("/forum/report/:id", (req, res) => {
     res.json({ message: "Post reported successfully" });
   });
 });
+
+// DELETE: Kommentar löschen
+/*
+app.delete("/forum/comment/:id", (req, res) => {
+  const { id } = req.params;
+
+  const query = `DELETE FROM comments WHERE id = ?`;
+
+  db.run(query, [id], function (err) {
+    if (err) {
+      console.error("Error deleting comment:", err.message);
+      return res.status(500).json({ error: "Error deleting the comment" });
+    }
+
+    if (this.changes === 0) {
+      return res.status(404).json({ error: "Comment not found" });
+    }
+
+    res.status(200).json({ message: "Comment deleted successfully" });
+  });
+});
+
+*/
 
 // Start Server
 app.listen(PORT, () => {
