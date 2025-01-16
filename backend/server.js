@@ -593,10 +593,10 @@ app.get("/api/tutors/:tutorId/pending-bookings", (req, res) => {
     SELECT 
         ce.id AS enrollmentId,
         u.username AS studentName,
-        u.email AS studentEmail,  -- E-Mail des Studenten
-        u.ProfileImage AS studentProfileImage,  -- Profilbild des Studenten
+        u.email AS studentEmail,
+        u.ProfileImage AS studentProfileImage,
         c.id AS courseId,
-        c.title AS courseName,  -- Titel des Kurses
+        c.title AS courseName,
         bs.status AS bookingStatus,
         c.category,
         c.subcategory,
