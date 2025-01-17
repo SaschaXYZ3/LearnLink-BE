@@ -188,7 +188,6 @@ app.get('/api/user', authenticateToken, async (req, res) => {
 
 
 // API endpoint for updating user profile
-// POST: Update user profile
 app.post("/api/user/update", authenticateToken, async (req, res) => {
   const { username, email, birthDate, currentPassword, newPassword } = req.body;
   const userId = req.user.id;
