@@ -311,8 +311,8 @@ app.post("/api/courses", authenticateToken, (req, res) => {
 });*/
 
 // API Endpoint zum Abrufen aller Kurse mit erweiterten Informationen
-app.get("/api/courses", authenticateToken, (req, res) => {
-  const userId = req.user.id; // Aus dem Token abgeleiteter Benutzer
+app.get("/api/courses", (req, res) => {
+  //const userId = req.user.id; // Aus dem Token abgeleiteter Benutzer
 
   const query = `
     SELECT 
@@ -336,7 +336,7 @@ app.get("/api/courses", authenticateToken, (req, res) => {
     GROUP BY courses.id;
   `;
 
-  db.all(query, [userId, userId], (err, rows) => {
+  db.all(query, (err, rows) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
