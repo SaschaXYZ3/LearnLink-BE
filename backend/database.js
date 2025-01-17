@@ -197,6 +197,13 @@ db.serialize(() => {
     });
   });
 
+  db.run("DROP TABLE IF EXISTS booking_status", (err) => {
+    if (err) {
+      console.error("Error dropping users table:", err.message);
+    } else {
+      console.log("Users table dropped (if it existed)");
+    }
+  });
   // Tabelle booking_status erstellen, falls sie noch nicht existiert
   db.run(
     `
@@ -215,7 +222,7 @@ db.serialize(() => {
   );
 
   // Füge die Standardstatus-Werte in die Tabelle booking_status ein, falls sie noch nicht vorhanden sind.
-  const statuses = ["requested", "booked", "completed", "rejected"];
+  const statuses = ["booked", "completed", "requested", "rejected"];
   statuses.forEach((status) => {
     db.run("INSERT OR IGNORE INTO booking_status (status) VALUES (?)", [
       status,
