@@ -586,8 +586,9 @@ app.get("/api/courses/:courseId/reviews", async (req, res) => {
   }
 });
 
-app.get("/api/tutors/:tutorId/pending-bookings", (req, res) => {
-  const { tutorId } = req.params;
+app.get("/api/tutors/pending-bookings", authenticateToken, (req, res) => {
+  const userId = req.user.id; // Benutzer-ID aus dem Token extrahieren
+  console.log("Tutor ID from token:", userId);
 
   const query = `
     SELECT 
@@ -618,7 +619,7 @@ app.get("/api/tutors/:tutorId/pending-bookings", (req, res) => {
         c.userId = ? AND ce.status = 3;
   `;
 
-  db.all(query, [tutorId], (err, rows) => {
+  db.all(query, [userId], (err, rows) => {
     if (err) {
       console.error("Error fetching pending bookings:", err.message);
       res.status(500).json({ error: "Failed to fetch pending bookings" });
