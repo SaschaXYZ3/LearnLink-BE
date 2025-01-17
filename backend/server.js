@@ -153,6 +153,87 @@ app.post("/login", (req, res) => {
   );
 });
 
+//User Daten abrufen
+app.get('/api/user', authenticateToken, async (req, res) => {
+  const userId = req.user.id; // Benutzer-ID aus dem Token extrahieren
+
+  // SQL-Abfrage zum Abrufen der Benutzerdaten
+  const query = `SELECT id, username, email, birthDate FROM users WHERE id = ?`;
+
+  try {
+    // Verwende db.get für das Abrufen der Benutzerdaten aus der Datenbank
+    db.get(query, [userId], (err, row) => {
+      if (err) {
+        console.error('Fehler bei der Abfrage der Benutzerdaten:', err.message);
+        return res.status(500).json({ error: 'Fehler beim Abrufen der Benutzerdaten.' });
+      }
+
+      if (!row) {
+        return res.status(404).json({ error: 'Benutzer nicht gefunden.' });
+      }
+
+      // Erfolgreiche Antwort mit den Benutzerdaten
+      return res.status(200).json({
+        id: row.id,
+        username: row.username,
+        email: row.email,
+        birthDate: row.birthDate,
+      });
+    });
+  } catch (error) {
+    console.error('Fehler bei der Verarbeitung der Anfrage:', error);
+    return res.status(500).json({ error: 'Fehler beim Abrufen der Benutzerdaten.' });
+  }
+});
+
+
+// API endpoint for updating user profile
+// POST: Update user profile
+app.post("/api/user/update", authenticateToken, async (req, res) => {
+  const { username, email, birthDate, currentPassword, newPassword } = req.body;
+  const userId = req.user.id;
+
+  // Überprüfen, ob der Benutzer existiert
+  db.get("SELECT * FROM users WHERE id = ?", [userId], async (err, user) => {
+    if (err) return res.status(500).json({ error: "Database error" });
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    // Wenn ein neues Passwort bereitgestellt wurde
+    if (newPassword) {
+      // Überprüfen, ob das aktuelle Passwort korrekt ist
+      const passwordMatch = await bcrypt.compare(currentPassword, user.password);
+      if (!passwordMatch) {
+        return res.status(400).json({ error: "Incorrect current password" });
+      }
+
+      // Neues Passwort hashen
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+      // Update Passwort und andere Felder
+      db.run(
+        "UPDATE users SET username = ?, email = ?, birthDate = ?, password = ? WHERE id = ?",
+        [username, email, birthDate, hashedPassword, userId],
+        (err) => {
+          if (err) return res.status(500).json({ error: "Database update error" });
+          res.json({ message: "Profile updated successfully" });
+        }
+      );
+    } else {
+      // Kein neues Passwort bereitgestellt, nur andere Felder aktualisieren
+      db.run(
+        "UPDATE users SET username = ?, email = ?, birthDate = ? WHERE id = ?",
+        [username, email, birthDate, userId],
+        (err) => {
+          if (err) return res.status(500).json({ error: "Database update error" });
+          res.json({ message: "Profile updated successfully" });
+        }
+      );
+    }
+  });
+});
+
+
+
 // Protected route example
 app.get("/api/protected", authenticateToken, (req, res) => {
   res.json({ message: "This is a protected route", user: req.user });
