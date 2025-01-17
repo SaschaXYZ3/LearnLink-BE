@@ -192,7 +192,7 @@ app.post("/api/user/update", authenticateToken, async (req, res) => {
   const { username, email, birthDate, currentPassword, newPassword } = req.body;
   const userId = req.user.id;
 
-  // Überprüfen, ob der Benutzer existiert
+  // Überprüfen user existiert
   db.get("SELECT * FROM users WHERE id = ?", [userId], async (err, user) => {
     if (err) return res.status(500).json({ error: "Database error" });
     if (!user) return res.status(404).json({ error: "User not found" });
