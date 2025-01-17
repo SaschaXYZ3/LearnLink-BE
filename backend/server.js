@@ -344,6 +344,7 @@ app.get("/api/courses", (req, res) => {
   });
 });
 
+//Kurs buchen
 app.post("/api/book/:courseId", authenticateToken, (req, res) => {
   const { courseId } = req.params;
   const userId = req.user?.id;
@@ -586,6 +587,7 @@ app.get("/api/courses/:courseId/reviews", async (req, res) => {
   }
 });
 
+//Anzeige von Pending Requests in TutorView
 app.get("/api/tutors/pending-bookings", authenticateToken, (req, res) => {
   const userId = req.user.id; // Benutzer-ID aus dem Token extrahieren
   console.log("Tutor ID from token:", userId);
@@ -629,32 +631,54 @@ app.get("/api/tutors/pending-bookings", authenticateToken, (req, res) => {
   });
 });
 
-// POST /api/enrollments/:enrollmentId/accept
 app.post("/api/enrollments/:enrollmentId/accept", async (req, res) => {
   const { enrollmentId } = req.params;
 
   try {
-    const enrollment = await CourseEnrollment.findById(enrollmentId);
+    // Hole die Buchung aus der course_enrollment Tabelle
+    const enrollment = await db.get(
+      "SELECT * FROM course_enrollment WHERE id = ?",
+      [enrollmentId]
+    );
 
     if (!enrollment) {
+      console.error(`Enrollment with ID ${enrollmentId} not found`);
       return res.status(404).json({ error: "Enrollment not found" });
     }
 
-    const course = await CourseAvailability.findById(enrollment.courseId);
+    // Hole den Kurs aus der course_availability Tabelle
+    const course = await db.get(
+      "SELECT * FROM course_availability WHERE courseId = ?",
+      [enrollment.courseId]
+    );
 
+    if (!course) {
+      console.error(`Course with ID ${enrollment.courseId} not found`);
+      return res.status(404).json({ error: "Course not found" });
+    }
+
+    // Überprüfe, ob der Kurs voll ist
     if (course.actualStudents >= course.maxStudents) {
+      console.error(`Course with ID ${enrollment.courseId} is full`);
       return res.status(400).json({ error: "Course is already full" });
     }
 
-    enrollment.status = "Accepted";
-    await enrollment.save();
+    // Ändere den Status der Buchung auf "Accepted" (Status = 0)
+    await db.run("UPDATE course_enrollment SET status = 1 WHERE id = ?", [
+      enrollmentId,
+    ]);
 
-    course.actualStudents += 1;
-    await course.save();
+    // Erhöhe die tatsächliche Anzahl der Studenten im Kurs
+    await db.run(
+      "UPDATE course_availability SET actualStudents = actualStudents + 1 WHERE courseId = ?",
+      [enrollment.courseId]
+    );
+
+    console.log(`Enrollment with ID ${enrollmentId} has been accepted`);
 
     res.status(200).json({ message: "Enrollment accepted", enrollment });
   } catch (error) {
-    console.error(error);
+    console.error("Error during enrollment acceptance:", error.message);
     res.status(500).json({ error: "Failed to accept enrollment" });
   }
 });
@@ -664,14 +688,18 @@ app.post("/api/enrollments/:enrollmentId/reject", async (req, res) => {
   const { enrollmentId } = req.params;
 
   try {
-    const enrollment = await CourseEnrollment.findById(enrollmentId);
+    const enrollment = await db.get(
+      "SELECT * FROM course_enrollment WHERE id = ?",
+      [enrollmentId]
+    );
 
     if (!enrollment) {
       return res.status(404).json({ error: "Enrollment not found" });
     }
 
-    enrollment.status = "Rejected";
-    await enrollment.save();
+    await db.run("UPDATE course_enrollment SET status = 4 WHERE id = ?", [
+      enrollmentId,
+    ]);
 
     res.status(200).json({ message: "Enrollment rejected", enrollment });
   } catch (error) {
