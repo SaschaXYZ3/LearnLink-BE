@@ -425,6 +425,7 @@ app.get("/api/courses", (req, res) => {
   });
 });
 
+//Kurs buchen
 app.post("/api/book/:courseId", authenticateToken, (req, res) => {
   const { courseId } = req.params;
   const userId = req.user?.id;
@@ -667,8 +668,10 @@ app.get("/api/courses/:courseId/reviews", async (req, res) => {
   }
 });
 
-app.get("/api/tutors/:tutorId/pending-bookings", (req, res) => {
-  const { tutorId } = req.params;
+//Anzeige von Pending Requests in TutorView
+app.get("/api/tutors/pending-bookings", authenticateToken, (req, res) => {
+  const userId = req.user.id; // Benutzer-ID aus dem Token extrahieren
+  console.log("Tutor ID from token:", userId);
 
   const query = `
     SELECT 
@@ -699,7 +702,7 @@ app.get("/api/tutors/:tutorId/pending-bookings", (req, res) => {
         c.userId = ? AND ce.status = 3;
   `;
 
-  db.all(query, [tutorId], (err, rows) => {
+  db.all(query, [userId], (err, rows) => {
     if (err) {
       console.error("Error fetching pending bookings:", err.message);
       res.status(500).json({ error: "Failed to fetch pending bookings" });
@@ -709,32 +712,54 @@ app.get("/api/tutors/:tutorId/pending-bookings", (req, res) => {
   });
 });
 
-// POST /api/enrollments/:enrollmentId/accept
 app.post("/api/enrollments/:enrollmentId/accept", async (req, res) => {
   const { enrollmentId } = req.params;
 
   try {
-    const enrollment = await CourseEnrollment.findById(enrollmentId);
+    // Hole die Buchung aus der course_enrollment Tabelle
+    const enrollment = await db.get(
+      "SELECT * FROM course_enrollment WHERE id = ?",
+      [enrollmentId]
+    );
 
     if (!enrollment) {
+      console.error(`Enrollment with ID ${enrollmentId} not found`);
       return res.status(404).json({ error: "Enrollment not found" });
     }
 
-    const course = await CourseAvailability.findById(enrollment.courseId);
+    // Hole den Kurs aus der course_availability Tabelle
+    const course = await db.get(
+      "SELECT * FROM course_availability WHERE courseId = ?",
+      [enrollment.courseId]
+    );
 
+    if (!course) {
+      console.error(`Course with ID ${enrollment.courseId} not found`);
+      return res.status(404).json({ error: "Course not found" });
+    }
+
+    // Überprüfe, ob der Kurs voll ist
     if (course.actualStudents >= course.maxStudents) {
+      console.error(`Course with ID ${enrollment.courseId} is full`);
       return res.status(400).json({ error: "Course is already full" });
     }
 
-    enrollment.status = "Accepted";
-    await enrollment.save();
+    // Ändere den Status der Buchung auf "Accepted" (Status = 0)
+    await db.run("UPDATE course_enrollment SET status = 1 WHERE id = ?", [
+      enrollmentId,
+    ]);
 
-    course.actualStudents += 1;
-    await course.save();
+    // Erhöhe die tatsächliche Anzahl der Studenten im Kurs
+    await db.run(
+      "UPDATE course_availability SET actualStudents = actualStudents + 1 WHERE courseId = ?",
+      [enrollment.courseId]
+    );
+
+    console.log(`Enrollment with ID ${enrollmentId} has been accepted`);
 
     res.status(200).json({ message: "Enrollment accepted", enrollment });
   } catch (error) {
-    console.error(error);
+    console.error("Error during enrollment acceptance:", error.message);
     res.status(500).json({ error: "Failed to accept enrollment" });
   }
 });
@@ -744,14 +769,18 @@ app.post("/api/enrollments/:enrollmentId/reject", async (req, res) => {
   const { enrollmentId } = req.params;
 
   try {
-    const enrollment = await CourseEnrollment.findById(enrollmentId);
+    const enrollment = await db.get(
+      "SELECT * FROM course_enrollment WHERE id = ?",
+      [enrollmentId]
+    );
 
     if (!enrollment) {
       return res.status(404).json({ error: "Enrollment not found" });
     }
 
-    enrollment.status = "Rejected";
-    await enrollment.save();
+    await db.run("UPDATE course_enrollment SET status = 4 WHERE id = ?", [
+      enrollmentId,
+    ]);
 
     res.status(200).json({ message: "Enrollment rejected", enrollment });
   } catch (error) {
@@ -832,30 +861,103 @@ app.get("/forum/comments/:postId", (req, res) => {
   });
 });
 
-// POST: Beitrag liken
-app.post("/forum/like/:id", (req, res) => {
-  const { id } = req.params;
+// GET: Interactions auf Forumeinträge
+app.get("/forum/interactions", authenticateToken, (req, res) => {
+  const userId = req.user.id;
 
-  const query = `UPDATE posts SET likes = likes + 1 WHERE id = ?`;
-  db.run(query, [id], (err) => {
-    if (err) {
-      return res.status(500).json({ error: "Error liking the post" });
+  db.all(
+    "SELECT post_id, liked, reported FROM post_interactions WHERE user_id = ?",
+    [userId],
+    (err, rows) => {
+      if (err) return res.status(500).json({ error: "Database error" });
+      res.json(rows);
     }
-    res.json({ message: "Post liked successfully" });
-  });
+  );
+});
+
+
+// POST: Beitrag liken
+app.post("/forum/like/:id", authenticateToken, (req, res) => {
+  const postId = req.params.id;
+  const userId = req.user.id;
+
+  // Check if the user has already liked the post
+  db.get(
+    "SELECT * FROM post_interactions WHERE user_id = ? AND post_id = ? AND liked = 1",
+    [userId, postId],
+    (err, row) => {
+      if (err) return res.status(500).json({ error: "Database error" });
+      if (row) return res.status(400).json({ error: "You already liked this post" });
+
+      // Add like interaction
+      db.run(
+        "INSERT INTO post_interactions (user_id, post_id, liked) VALUES (?, ?, 1)",
+        [userId, postId],
+        (err) => {
+          if (err) return res.status(500).json({ error: "Database error" });
+
+          // Update the like count in the posts table
+          db.run(
+            "UPDATE posts SET likes = likes + 1 WHERE id = ?",
+            [postId],
+            (err) => {
+              if (err) return res.status(500).json({ error: "Database error" });
+              res.json({ message: "Post liked successfully" });
+            }
+          );
+        }
+      );
+    }
+  );
 });
 
 // POST: Beitrag melden
-app.post("/forum/report/:id", (req, res) => {
-  const { id } = req.params;
+app.post("/forum/report/:id", authenticateToken, (req, res) => {
+  const postId = req.params.id;
+  const userId = req.user.id;
 
-  const query = `UPDATE posts SET reported = 1 WHERE id = ?`;
-  db.run(query, [id], (err) => {
-    if (err) {
-      return res.status(500).json({ error: "Error reporting the post" });
+  // Check if the user has already reported the post
+  db.get(
+    "SELECT * FROM post_interactions WHERE user_id = ? AND post_id = ?",
+    [userId, postId],
+    (err, row) => {
+      if (err) {
+        console.error("Database error:", err.message); // Log the actual error
+        return res.status(500).json({ error: "Database error" });
+      }
+
+      if (row && row.reported === 1) {
+        return res.status(400).json({ error: "You have already reported this post" });
+      }
+
+      // Add or update the report interaction
+      const query = row
+        ? "UPDATE post_interactions SET reported = 1 WHERE user_id = ? AND post_id = ?"
+        : "INSERT INTO post_interactions (user_id, post_id, reported) VALUES (?, ?, 1)";
+
+      db.run(query, [userId, postId], (err) => {
+        if (err) {
+          console.error("Database error:", err.message); // Log the actual error
+          return res.status(500).json({ error: "Database error" });
+        }
+
+        // Increment the reported count in the posts table
+        db.run(
+          "UPDATE posts SET reported = reported + 1 WHERE id = ?",
+          [postId],
+          (err) => {
+            if (err) {
+              console.error("Database error:", err.message); // Log the actual error
+              return res.status(500).json({ error: "Database error" });
+            }
+
+            // Respond with success and normalized boolean for `reported`
+            res.json({ message: "Post reported successfully", reported: 1 });
+          }
+        );
+      });
     }
-    res.json({ message: "Post reported successfully" });
-  });
+  );
 });
 
 // DELETE: Kommentar löschen

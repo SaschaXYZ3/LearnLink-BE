@@ -68,7 +68,9 @@ db.serialize(() => {
 
   `);
 
-  //FORUM
+  //FORUM 
+
+  //posts tabelle
   db.run(`
       CREATE TABLE IF NOT EXISTS posts (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -79,6 +81,22 @@ db.serialize(() => {
       reported INTEGER DEFAULT 0
       )
     `);
+
+    //Post interactions tabelle
+
+    db.run(`
+      CREATE TABLE IF NOT EXISTS post_interactions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      post_id INTEGER NOT NULL,
+      liked INTEGER DEFAULT 0, -- 0 represents false, 1 represents true
+      reported INTEGER DEFAULT 0, -- 0 represents false, 1 represents true
+      UNIQUE(user_id, post_id) -- Ensure one user can interact only once per post
+        )
+      `);
+  
+  
+  
 
   // Tabelle für Kommentare (Posts verlinken mit Post-ID)
   db.run(`
@@ -179,6 +197,13 @@ db.serialize(() => {
     });
   });
 
+  db.run("DROP TABLE IF EXISTS booking_status", (err) => {
+    if (err) {
+      console.error("Error dropping users table:", err.message);
+    } else {
+      console.log("Users table dropped (if it existed)");
+    }
+  });
   // Tabelle booking_status erstellen, falls sie noch nicht existiert
   db.run(
     `
@@ -197,7 +222,7 @@ db.serialize(() => {
   );
 
   // Füge die Standardstatus-Werte in die Tabelle booking_status ein, falls sie noch nicht vorhanden sind.
-  const statuses = ["requested", "booked", "completed", "rejected"];
+  const statuses = ["booked", "completed", "requested", "rejected"];
   statuses.forEach((status) => {
     db.run("INSERT OR IGNORE INTO booking_status (status) VALUES (?)", [
       status,
