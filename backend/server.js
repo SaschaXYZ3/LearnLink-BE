@@ -154,7 +154,7 @@ app.post("/login", (req, res) => {
 });
 
 //User Daten abrufen
-app.get('/api/user', authenticateToken, async (req, res) => {
+app.get("/api/user", authenticateToken, async (req, res) => {
   const userId = req.user.id; // Benutzer-ID aus dem Token extrahieren
 
   // SQL-Abfrage zum Abrufen der Benutzerdaten
@@ -164,12 +164,14 @@ app.get('/api/user', authenticateToken, async (req, res) => {
     // Verwende db.get für das Abrufen der Benutzerdaten aus der Datenbank
     db.get(query, [userId], (err, row) => {
       if (err) {
-        console.error('Fehler bei der Abfrage der Benutzerdaten:', err.message);
-        return res.status(500).json({ error: 'Fehler beim Abrufen der Benutzerdaten.' });
+        console.error("Fehler bei der Abfrage der Benutzerdaten:", err.message);
+        return res
+          .status(500)
+          .json({ error: "Fehler beim Abrufen der Benutzerdaten." });
       }
 
       if (!row) {
-        return res.status(404).json({ error: 'Benutzer nicht gefunden.' });
+        return res.status(404).json({ error: "Benutzer nicht gefunden." });
       }
 
       // Erfolgreiche Antwort mit den Benutzerdaten
@@ -181,11 +183,12 @@ app.get('/api/user', authenticateToken, async (req, res) => {
       });
     });
   } catch (error) {
-    console.error('Fehler bei der Verarbeitung der Anfrage:', error);
-    return res.status(500).json({ error: 'Fehler beim Abrufen der Benutzerdaten.' });
+    console.error("Fehler bei der Verarbeitung der Anfrage:", error);
+    return res
+      .status(500)
+      .json({ error: "Fehler beim Abrufen der Benutzerdaten." });
   }
 });
-
 
 // API endpoint for updating user profile
 app.post("/api/user/update", authenticateToken, async (req, res) => {
@@ -200,7 +203,10 @@ app.post("/api/user/update", authenticateToken, async (req, res) => {
     // Wenn ein neues Passwort bereitgestellt wurde
     if (newPassword) {
       // Überprüfen, ob das aktuelle Passwort korrekt ist
-      const passwordMatch = await bcrypt.compare(currentPassword, user.password);
+      const passwordMatch = await bcrypt.compare(
+        currentPassword,
+        user.password
+      );
       if (!passwordMatch) {
         return res.status(400).json({ error: "Incorrect current password" });
       }
@@ -213,7 +219,8 @@ app.post("/api/user/update", authenticateToken, async (req, res) => {
         "UPDATE users SET username = ?, email = ?, birthDate = ?, password = ? WHERE id = ?",
         [username, email, birthDate, hashedPassword, userId],
         (err) => {
-          if (err) return res.status(500).json({ error: "Database update error" });
+          if (err)
+            return res.status(500).json({ error: "Database update error" });
           res.json({ message: "Profile updated successfully" });
         }
       );
@@ -223,15 +230,14 @@ app.post("/api/user/update", authenticateToken, async (req, res) => {
         "UPDATE users SET username = ?, email = ?, birthDate = ? WHERE id = ?",
         [username, email, birthDate, userId],
         (err) => {
-          if (err) return res.status(500).json({ error: "Database update error" });
+          if (err)
+            return res.status(500).json({ error: "Database update error" });
           res.json({ message: "Profile updated successfully" });
         }
       );
     }
   });
 });
-
-
 
 // Protected route example
 app.get("/api/protected", authenticateToken, (req, res) => {
@@ -788,6 +794,48 @@ app.post("/api/enrollments/:enrollmentId/reject", async (req, res) => {
   }
 });
 
+// GET /api/enrollments/:courseId
+app.get("/api/enrollments/:courseId", async (req, res) => {
+  const { courseId } = req.params;
+  console.log("Course ID is:", courseId); // Überprüfe die übergebene courseId
+
+  const status = 1; // Fixe Status, dass nur "booked" angezeigt werden
+
+  // SQL-Abfrage
+  const sql = `
+    SELECT u.username AS studentName, u.email AS studentEmail
+    FROM course_enrollment ce
+    JOIN users u ON ce.userId = u.id
+    WHERE ce.courseId = ? AND ce.status = ?
+  `;
+
+  console.log("SQL Query:", sql); // Logge die SQL-Abfrage
+  console.log("Parameters:", [parseInt(courseId), status]); // Logge die übergebenen Parameter
+
+  try {
+    // Verwende db.all(), um mehrere Zeilen abzurufen:
+    //ACHTUNG!!!
+    //SQLite3 verwendet in node.js Callbacks um async await zu implementieren muss man Promise nutzen
+    const participants = await new Promise((resolve, reject) => {
+      db.all(sql, [parseInt(courseId), status], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      });
+    });
+
+    console.log("Fetched participants from DB:", participants); // Zeige das Ergebnis der DB-Abfrage
+
+    if (!participants || participants.length === 0) {
+      return res.status(404).json({ error: "No participants found" });
+    }
+
+    res.status(200).json(participants); // Gebe die Teilnehmerdaten als JSON zurück
+  } catch (error) {
+    console.error("Error fetching participants:", error.message);
+    res.status(500).json({ error: "Failed to load participants" });
+  }
+});
+
 // FORUM SECTION:
 //-----------------
 
@@ -874,7 +922,6 @@ app.get("/forum/interactions", authenticateToken, (req, res) => {
   );
 });
 
-
 // POST: Beitrag liken
 app.post("/forum/like/:id", authenticateToken, (req, res) => {
   const postId = req.params.id;
@@ -886,7 +933,8 @@ app.post("/forum/like/:id", authenticateToken, (req, res) => {
     [userId, postId],
     (err, row) => {
       if (err) return res.status(500).json({ error: "Database error" });
-      if (row) return res.status(400).json({ error: "You already liked this post" });
+      if (row)
+        return res.status(400).json({ error: "You already liked this post" });
 
       // Add like interaction
       db.run(
@@ -926,7 +974,9 @@ app.post("/forum/report/:id", authenticateToken, (req, res) => {
       }
 
       if (row && row.reported === 1) {
-        return res.status(400).json({ error: "You have already reported this post" });
+        return res
+          .status(400)
+          .json({ error: "You have already reported this post" });
       }
 
       // Add or update the report interaction
