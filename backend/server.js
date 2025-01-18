@@ -154,7 +154,7 @@ app.post("/login", (req, res) => {
 });
 
 //User Daten abrufen
-app.get('/api/user', authenticateToken, async (req, res) => {
+app.get("/api/user", authenticateToken, async (req, res) => {
   const userId = req.user.id; // Benutzer-ID aus dem Token extrahieren
 
   // SQL-Abfrage zum Abrufen der Benutzerdaten
@@ -164,12 +164,14 @@ app.get('/api/user', authenticateToken, async (req, res) => {
     // Verwende db.get für das Abrufen der Benutzerdaten aus der Datenbank
     db.get(query, [userId], (err, row) => {
       if (err) {
-        console.error('Fehler bei der Abfrage der Benutzerdaten:', err.message);
-        return res.status(500).json({ error: 'Fehler beim Abrufen der Benutzerdaten.' });
+        console.error("Fehler bei der Abfrage der Benutzerdaten:", err.message);
+        return res
+          .status(500)
+          .json({ error: "Fehler beim Abrufen der Benutzerdaten." });
       }
 
       if (!row) {
-        return res.status(404).json({ error: 'Benutzer nicht gefunden.' });
+        return res.status(404).json({ error: "Benutzer nicht gefunden." });
       }
 
       // Erfolgreiche Antwort mit den Benutzerdaten
@@ -181,11 +183,12 @@ app.get('/api/user', authenticateToken, async (req, res) => {
       });
     });
   } catch (error) {
-    console.error('Fehler bei der Verarbeitung der Anfrage:', error);
-    return res.status(500).json({ error: 'Fehler beim Abrufen der Benutzerdaten.' });
+    console.error("Fehler bei der Verarbeitung der Anfrage:", error);
+    return res
+      .status(500)
+      .json({ error: "Fehler beim Abrufen der Benutzerdaten." });
   }
 });
-
 
 // API endpoint for updating user profile
 app.post("/api/user/update", authenticateToken, async (req, res) => {
@@ -200,7 +203,10 @@ app.post("/api/user/update", authenticateToken, async (req, res) => {
     // Wenn ein neues Passwort bereitgestellt wurde
     if (newPassword) {
       // Überprüfen, ob das aktuelle Passwort korrekt ist
-      const passwordMatch = await bcrypt.compare(currentPassword, user.password);
+      const passwordMatch = await bcrypt.compare(
+        currentPassword,
+        user.password
+      );
       if (!passwordMatch) {
         return res.status(400).json({ error: "Incorrect current password" });
       }
@@ -213,7 +219,8 @@ app.post("/api/user/update", authenticateToken, async (req, res) => {
         "UPDATE users SET username = ?, email = ?, birthDate = ?, password = ? WHERE id = ?",
         [username, email, birthDate, hashedPassword, userId],
         (err) => {
-          if (err) return res.status(500).json({ error: "Database update error" });
+          if (err)
+            return res.status(500).json({ error: "Database update error" });
           res.json({ message: "Profile updated successfully" });
         }
       );
@@ -223,15 +230,14 @@ app.post("/api/user/update", authenticateToken, async (req, res) => {
         "UPDATE users SET username = ?, email = ?, birthDate = ? WHERE id = ?",
         [username, email, birthDate, userId],
         (err) => {
-          if (err) return res.status(500).json({ error: "Database update error" });
+          if (err)
+            return res.status(500).json({ error: "Database update error" });
           res.json({ message: "Profile updated successfully" });
         }
       );
     }
   });
 });
-
-
 
 // Protected route example
 app.get("/api/protected", authenticateToken, (req, res) => {
@@ -378,6 +384,35 @@ app.post("/api/courses", authenticateToken, (req, res) => {
   );
 });
 
+
+app.post("/contact", async (req, res) => {
+  const { name, email, message } = req.body;
+
+  // Validierung der Eingaben
+  if (!name || !email || !message) {
+    return res.status(400).json({ error: "All fields are required" });
+  }
+
+  // SQL-Abfrage zum Einfügen des neuen Kontaktantrags
+  const query = `
+    INSERT INTO contact_requests (name, email, message, date)
+    VALUES (?, ?, ?, ?)
+  `;
+  const createdAt = new Date().toISOString(); // Zeitstempel
+
+  db.run(query, [name, email, message, createdAt], function (err) {
+    if (err) {
+      console.error("Error inserting contact request:", err.message);
+      return res
+        .status(500)
+        .json({ error: "Failed to save the contact request" });
+    }
+
+    res
+      .status(201)
+      .json({ message: "Contact request submitted successfully" });
+  });
+});
 // API Endpoint zum Abrufen aller Kurse
 /*app.get("/api/courses", authenticateToken, (req, res) => {
   const query = `SELECT courses.*, users.username AS tutor
@@ -716,52 +751,87 @@ app.get("/api/tutors/pending-bookings", authenticateToken, (req, res) => {
   });
 });
 
+const dbGet = (db, query, params) => {
+  return new Promise((resolve, reject) => {
+    db.get(query, params, (err, row) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(row);
+      }
+    });
+  });
+};
+
 app.post("/api/enrollments/:enrollmentId/accept", async (req, res) => {
   const { enrollmentId } = req.params;
 
+  // Logge das empfangene `enrollmentId`
+  console.log("Received enrollmentId from request:", enrollmentId);
+
+  // Sicherstellen, dass enrollmentId ein Integer ist
+  const enrollmentIdInteger = parseInt(enrollmentId, 10);
+
+  if (isNaN(enrollmentIdInteger)) {
+    console.error("Invalid enrollmentId format, must be an integer");
+    return res.status(400).json({ error: "Invalid enrollmentId format" });
+  }
+
   try {
-    // Hole die Buchung aus der course_enrollment Tabelle
-    const enrollment = await db.get(
-      "SELECT * FROM course_enrollment WHERE id = ?",
-      [enrollmentId]
+    // Hole die `courseId` aus der Tabelle `course_enrollment`
+    const courseRow = await dbGet(
+      db,
+      "SELECT courseId FROM course_enrollment WHERE id = ?",
+      [enrollmentIdInteger]
     );
 
-    if (!enrollment) {
-      console.error(`Enrollment with ID ${enrollmentId} not found`);
+    if (!courseRow || !courseRow.courseId) {
+      console.error(`Enrollment with ID ${enrollmentIdInteger} not found`);
       return res.status(404).json({ error: "Enrollment not found" });
     }
 
-    // Hole den Kurs aus der course_availability Tabelle
-    const course = await db.get(
-      "SELECT * FROM course_availability WHERE courseId = ?",
-      [enrollment.courseId]
+    const courseId = courseRow.courseId;
+
+    console.log("Fetched courseId dynamically:", courseId);
+
+    // Hole die Daten zur Verfügbarkeit des Kurses
+    const courseAvailability = await dbGet(
+      db,
+      "SELECT actualStudents, maxStudents FROM course_availability WHERE courseId = ?",
+      [courseId]
     );
 
-    if (!course) {
-      console.error(`Course with ID ${enrollment.courseId} not found`);
+    if (!courseAvailability) {
+      console.error(`Course with ID ${courseId} not found`);
       return res.status(404).json({ error: "Course not found" });
     }
 
+    const { actualStudents, maxStudents } = courseAvailability;
+
+    console.log(
+      `Course Details - actualStudents: ${actualStudents}, maxStudents: ${maxStudents}`
+    );
+
     // Überprüfe, ob der Kurs voll ist
-    if (course.actualStudents >= course.maxStudents) {
-      console.error(`Course with ID ${enrollment.courseId} is full`);
+    if (actualStudents >= maxStudents) {
+      console.error(`Course with ID ${courseId} is full`);
       return res.status(400).json({ error: "Course is already full" });
     }
 
-    // Ändere den Status der Buchung auf "Accepted" (Status = 0)
+    // Akzeptiere die Buchung
     await db.run("UPDATE course_enrollment SET status = 1 WHERE id = ?", [
-      enrollmentId,
+      enrollmentIdInteger,
     ]);
 
-    // Erhöhe die tatsächliche Anzahl der Studenten im Kurs
+    // Erhöhe die Anzahl der Studenten
     await db.run(
       "UPDATE course_availability SET actualStudents = actualStudents + 1 WHERE courseId = ?",
-      [enrollment.courseId]
+      [courseId]
     );
 
-    console.log(`Enrollment with ID ${enrollmentId} has been accepted`);
+    console.log(`Enrollment with ID ${enrollmentIdInteger} has been accepted`);
 
-    res.status(200).json({ message: "Enrollment accepted", enrollment });
+    res.status(200).json({ message: "Enrollment accepted", courseId });
   } catch (error) {
     console.error("Error during enrollment acceptance:", error.message);
     res.status(500).json({ error: "Failed to accept enrollment" });
@@ -790,6 +860,48 @@ app.post("/api/enrollments/:enrollmentId/reject", async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Failed to reject enrollment" });
+  }
+});
+
+// GET /api/enrollments/:courseId
+app.get("/api/enrollments/:courseId", async (req, res) => {
+  const { courseId } = req.params;
+  console.log("Course ID is:", courseId); // Überprüfe die übergebene courseId
+
+  const status = 1; // Fixe Status, dass nur "booked" angezeigt werden
+
+  // SQL-Abfrage
+  const sql = `
+    SELECT u.username AS studentName, u.email AS studentEmail
+    FROM course_enrollment ce
+    JOIN users u ON ce.userId = u.id
+    WHERE ce.courseId = ? AND ce.status = ?
+  `;
+
+  console.log("SQL Query:", sql); // Logge die SQL-Abfrage
+  console.log("Parameters:", [parseInt(courseId), status]); // Logge die übergebenen Parameter
+
+  try {
+    // Verwende db.all(), um mehrere Zeilen abzurufen:
+    //ACHTUNG!!!
+    //SQLite3 verwendet in node.js Callbacks um async await zu implementieren muss man Promise nutzen
+    const participants = await new Promise((resolve, reject) => {
+      db.all(sql, [parseInt(courseId), status], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      });
+    });
+
+    console.log("Fetched participants from DB:", participants); // Zeige das Ergebnis der DB-Abfrage
+
+    if (!participants || participants.length === 0) {
+      return res.status(404).json({ error: "No participants found" });
+    }
+
+    res.status(200).json(participants); // Gebe die Teilnehmerdaten als JSON zurück
+  } catch (error) {
+    console.error("Error fetching participants:", error.message);
+    res.status(500).json({ error: "Failed to load participants" });
   }
 });
 
@@ -879,7 +991,6 @@ app.get("/forum/interactions", authenticateToken, (req, res) => {
   );
 });
 
-
 // POST: Beitrag liken
 app.post("/forum/like/:id", authenticateToken, (req, res) => {
   const postId = req.params.id;
@@ -891,7 +1002,8 @@ app.post("/forum/like/:id", authenticateToken, (req, res) => {
     [userId, postId],
     (err, row) => {
       if (err) return res.status(500).json({ error: "Database error" });
-      if (row) return res.status(400).json({ error: "You already liked this post" });
+      if (row)
+        return res.status(400).json({ error: "You already liked this post" });
 
       // Add like interaction
       db.run(
@@ -931,7 +1043,9 @@ app.post("/forum/report/:id", authenticateToken, (req, res) => {
       }
 
       if (row && row.reported === 1) {
-        return res.status(400).json({ error: "You have already reported this post" });
+        return res
+          .status(400)
+          .json({ error: "You have already reported this post" });
       }
 
       // Add or update the report interaction
@@ -964,6 +1078,78 @@ app.post("/forum/report/:id", authenticateToken, (req, res) => {
   );
 });
 
+
+
+// ANALYTICS PAGE
+
+app.get('/api/analytics', async (req, res) => {
+  try {
+    const authLogs = [
+      { username: 'john_doe', action: 'Login', timestamp: '2025-01-17 12:00:00', ipAddress: '192.168.1.1' },
+      { username: 'jane_doe', action: 'Logout', timestamp: '2025-01-17 13:00:00', ipAddress: '192.168.1.2' },
+    ];
+
+    const profileChanges = [
+      { username: 'john_doe', changeType: 'Email Changed', timestamp: '2025-01-17 11:30:00', ipAddress: '192.168.1.1' },
+    ];
+
+    const interactions = [
+      { username: 'jane_doe', action: 'Enrolled in Course', timestamp: '2025-01-17 14:00:00' },
+    ];
+    console.log("Fetched contact entries from DB:", contactEntries);
+    res.status(200).json({ authLogs, profileChanges, interactions });
+  } catch (error) {
+    console.error('Error fetching analytics data:', error);
+    res.status(500).json({ error: 'Failed to fetch analytics data' });
+  }
+});
+
+app.get("/api/contact-entries", authenticateToken, async (req, res) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ error: "Access denied" });
+  }
+
+  try {
+    const contactEntries = await new Promise((resolve, reject) => {
+      db.all("SELECT * FROM contact_requests", [], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      });
+    });
+
+    res.status(200).json(contactEntries);
+  } catch (error) {
+    console.error("Error fetching contact entries:", error.message);
+    res.status(500).json({ error: "Failed to fetch contact entries" });
+  }
+});
+
+app.delete("/api/contact-entries/:id", authenticateToken, (req, res) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ error: "Access denied" });
+  }
+
+  const { id } = req.params;
+
+  db.run(
+    "DELETE FROM contact_requests WHERE id = ?",
+    [id],
+    function (err) {
+      if (err) {
+        console.error("Error deleting contact entry:", err.message);
+        return res
+          .status(500)
+          .json({ error: "Failed to delete contact entry" });
+      }
+
+      if (this.changes === 0) {
+        return res.status(404).json({ error: "Contact entry not found" });
+      }
+
+      res.status(200).json({ message: "Contact entry deleted successfully" });
+    }
+  );
+});
 // DELETE: Kommentar löschen
 /*
 app.delete("/forum/comment/:id", (req, res) => {
