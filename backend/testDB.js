@@ -2,30 +2,43 @@ const sqlite3 = require("sqlite3").verbose();
 const db = new sqlite3.Database("./databases/database.db"); // Um den Pfad zur DB zu verwalten
 
 // Die SQL-Abfrage, die du testen möchtest
-const testQuery = () => {
-  const courseId = 5; // Beispiel-Kurs-ID
-  const status = 1; // Status "booked"
+db.run("DROP TABLE IF EXISTS course_availability", (err) => {
+  if (err) {
+    console.error("Error dropping users table:", err.message);
+  } else {
+    console.log("Users table dropped (if it existed)");
+  }
+});
 
-  // SQL-Abfrage
-  const sql = `
-    SELECT u.username AS studentName, u.email AS studentEmail
-    FROM course_enrollment ce
-    JOIN users u ON ce.userId = u.id
-    WHERE ce.courseId = ? AND ce.status = ?
-  `;
+db.run(`
+    CREATE TABLE IF NOT EXISTS course_availability (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      courseId INTEGER NOT NULL,
+      maxStudents INTEGER NOT NULL,
+      actualStudents INTEGER DEFAULT 0,
+      FOREIGN KEY (courseId) REFERENCES courses(id) ON DELETE CASCADE,
+      UNIQUE(courseId)
+    )
+  `);
 
-  // Führe die Abfrage aus
-  db.get(sql, [courseId, status], (err, rows) => {
-    if (err) {
-      console.error("Error during query execution:", err.message);
-    } else {
-      console.log("Fetched participants:", rows); // Zeigt die Ergebnisse der Abfrage
-    }
-  });
-};
-
-// Starte die Testabfrage
-testQuery();
+db.run("DROP TABLE IF EXISTS course_enrollment", (err) => {
+  if (err) {
+    console.error("Error dropping users table:", err.message);
+  } else {
+    console.log("Users table dropped (if it existed)");
+  }
+});
+db.run(`
+    CREATE TABLE IF NOT EXISTS course_enrollment (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,  
+      courseId INTEGER NOT NULL,             
+      userId INTEGER NOT NULL,               
+      status INTEGER NOT NULL DEFAULT 3,     
+      date DATETIME DEFAULT CURRENT_TIMESTAMP,            
+      FOREIGN KEY(courseId) REFERENCES courses(id), 
+      FOREIGN KEY(userId) REFERENCES users(id)
+    )
+  `);
 
 // Schließe die Datenbankverbindung
 db.close((err) => {
