@@ -717,52 +717,87 @@ app.get("/api/tutors/pending-bookings", authenticateToken, (req, res) => {
   });
 });
 
+const dbGet = (db, query, params) => {
+  return new Promise((resolve, reject) => {
+    db.get(query, params, (err, row) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(row);
+      }
+    });
+  });
+};
+
 app.post("/api/enrollments/:enrollmentId/accept", async (req, res) => {
   const { enrollmentId } = req.params;
 
+  // Logge das empfangene `enrollmentId`
+  console.log("Received enrollmentId from request:", enrollmentId);
+
+  // Sicherstellen, dass enrollmentId ein Integer ist
+  const enrollmentIdInteger = parseInt(enrollmentId, 10);
+
+  if (isNaN(enrollmentIdInteger)) {
+    console.error("Invalid enrollmentId format, must be an integer");
+    return res.status(400).json({ error: "Invalid enrollmentId format" });
+  }
+
   try {
-    // Hole die Buchung aus der course_enrollment Tabelle
-    const enrollment = await db.get(
-      "SELECT * FROM course_enrollment WHERE id = ?",
-      [enrollmentId]
+    // Hole die `courseId` aus der Tabelle `course_enrollment`
+    const courseRow = await dbGet(
+      db,
+      "SELECT courseId FROM course_enrollment WHERE id = ?",
+      [enrollmentIdInteger]
     );
 
-    if (!enrollment) {
-      console.error(`Enrollment with ID ${enrollmentId} not found`);
+    if (!courseRow || !courseRow.courseId) {
+      console.error(`Enrollment with ID ${enrollmentIdInteger} not found`);
       return res.status(404).json({ error: "Enrollment not found" });
     }
 
-    // Hole den Kurs aus der course_availability Tabelle
-    const course = await db.get(
-      "SELECT * FROM course_availability WHERE courseId = ?",
-      [enrollment.courseId]
+    const courseId = courseRow.courseId;
+
+    console.log("Fetched courseId dynamically:", courseId);
+
+    // Hole die Daten zur Verfügbarkeit des Kurses
+    const courseAvailability = await dbGet(
+      db,
+      "SELECT actualStudents, maxStudents FROM course_availability WHERE courseId = ?",
+      [courseId]
     );
 
-    if (!course) {
-      console.error(`Course with ID ${enrollment.courseId} not found`);
+    if (!courseAvailability) {
+      console.error(`Course with ID ${courseId} not found`);
       return res.status(404).json({ error: "Course not found" });
     }
 
+    const { actualStudents, maxStudents } = courseAvailability;
+
+    console.log(
+      `Course Details - actualStudents: ${actualStudents}, maxStudents: ${maxStudents}`
+    );
+
     // Überprüfe, ob der Kurs voll ist
-    if (course.actualStudents >= course.maxStudents) {
-      console.error(`Course with ID ${enrollment.courseId} is full`);
+    if (actualStudents >= maxStudents) {
+      console.error(`Course with ID ${courseId} is full`);
       return res.status(400).json({ error: "Course is already full" });
     }
 
-    // Ändere den Status der Buchung auf "Accepted" (Status = 0)
+    // Akzeptiere die Buchung
     await db.run("UPDATE course_enrollment SET status = 1 WHERE id = ?", [
-      enrollmentId,
+      enrollmentIdInteger,
     ]);
 
-    // Erhöhe die tatsächliche Anzahl der Studenten im Kurs
+    // Erhöhe die Anzahl der Studenten
     await db.run(
       "UPDATE course_availability SET actualStudents = actualStudents + 1 WHERE courseId = ?",
-      [enrollment.courseId]
+      [courseId]
     );
 
-    console.log(`Enrollment with ID ${enrollmentId} has been accepted`);
+    console.log(`Enrollment with ID ${enrollmentIdInteger} has been accepted`);
 
-    res.status(200).json({ message: "Enrollment accepted", enrollment });
+    res.status(200).json({ message: "Enrollment accepted", courseId });
   } catch (error) {
     console.error("Error during enrollment acceptance:", error.message);
     res.status(500).json({ error: "Failed to accept enrollment" });
