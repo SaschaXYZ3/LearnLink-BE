@@ -95,8 +95,6 @@ db.serialize(() => {
         )
       `);
   
-  
-  
 
   // Tabelle für Kommentare (Posts verlinken mit Post-ID)
   db.run(`
@@ -187,6 +185,7 @@ db.serialize(() => {
       )
     `);
 
+  
   // Add initial roles
   const roles = ["admin", "tutor", "student"];
   roles.forEach((role) => {
@@ -220,6 +219,17 @@ db.serialize(() => {
       }
     }
   );
+
+  // Spalte description in die Tabelle courses einfügen
+  /*
+  db.run(`ALTER TABLE courses ADD COLUMN description TEXT`, (err) => {
+    if (err) {
+      console.error("Error adding 'description' column to courses table:", err.message);
+    } else {
+      console.log("Column 'description' added to courses table successfully.");
+    }
+  });
+  */
 
   // Füge die Standardstatus-Werte in die Tabelle booking_status ein, falls sie noch nicht vorhanden sind.
   const statuses = ["booked", "completed", "requested", "rejected"];
