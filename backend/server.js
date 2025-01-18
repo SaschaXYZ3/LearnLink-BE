@@ -384,7 +384,6 @@ app.post("/api/courses", authenticateToken, (req, res) => {
   );
 });
 
-
 app.post("/contact", async (req, res) => {
   const { name, email, message } = req.body;
 
@@ -408,9 +407,7 @@ app.post("/contact", async (req, res) => {
         .json({ error: "Failed to save the contact request" });
     }
 
-    res
-      .status(201)
-      .json({ message: "Contact request submitted successfully" });
+    res.status(201).json({ message: "Contact request submitted successfully" });
   });
 });
 // API Endpoint zum Abrufen aller Kurse
@@ -571,7 +568,6 @@ app.post("/api/book/:courseId", authenticateToken, (req, res) => {
       .json({ error: "An error occurred while fetching courses." });
   }
 });*/
-
 
 app.post("/api/courses/:courseId/favorite", authenticateToken, (req, res) => {
   const courseId = req.params.courseId;
@@ -905,6 +901,19 @@ app.get("/api/enrollments/:courseId", async (req, res) => {
   }
 });
 
+app.get("/api/courses/:courseId/students", async (req, res) => {
+  const { courseId } = req.params;
+  console.log("courseid is ", courseId);
+  try {
+    const course = await db.get(
+      "SELECT maxStudents, actualStudents FROM course_availability WHERE courseId =?",
+      [courseId]
+    );
+  } catch (error) {
+    res.status(500).json({ error: "Failed to load course seats" });
+  }
+});
+
 // FORUM SECTION:
 //-----------------
 
@@ -1078,29 +1087,46 @@ app.post("/forum/report/:id", authenticateToken, (req, res) => {
   );
 });
 
-
-
 // ANALYTICS PAGE
 
-app.get('/api/analytics', async (req, res) => {
+app.get("/api/analytics", async (req, res) => {
   try {
     const authLogs = [
-      { username: 'john_doe', action: 'Login', timestamp: '2025-01-17 12:00:00', ipAddress: '192.168.1.1' },
-      { username: 'jane_doe', action: 'Logout', timestamp: '2025-01-17 13:00:00', ipAddress: '192.168.1.2' },
+      {
+        username: "john_doe",
+        action: "Login",
+        timestamp: "2025-01-17 12:00:00",
+        ipAddress: "192.168.1.1",
+      },
+      {
+        username: "jane_doe",
+        action: "Logout",
+        timestamp: "2025-01-17 13:00:00",
+        ipAddress: "192.168.1.2",
+      },
     ];
 
     const profileChanges = [
-      { username: 'john_doe', changeType: 'Email Changed', timestamp: '2025-01-17 11:30:00', ipAddress: '192.168.1.1' },
+      {
+        username: "john_doe",
+        changeType: "Email Changed",
+        timestamp: "2025-01-17 11:30:00",
+        ipAddress: "192.168.1.1",
+      },
     ];
 
     const interactions = [
-      { username: 'jane_doe', action: 'Enrolled in Course', timestamp: '2025-01-17 14:00:00' },
+      {
+        username: "jane_doe",
+        action: "Enrolled in Course",
+        timestamp: "2025-01-17 14:00:00",
+      },
     ];
     console.log("Fetched contact entries from DB:", contactEntries);
     res.status(200).json({ authLogs, profileChanges, interactions });
   } catch (error) {
-    console.error('Error fetching analytics data:', error);
-    res.status(500).json({ error: 'Failed to fetch analytics data' });
+    console.error("Error fetching analytics data:", error);
+    res.status(500).json({ error: "Failed to fetch analytics data" });
   }
 });
 
@@ -1131,24 +1157,18 @@ app.delete("/api/contact-entries/:id", authenticateToken, (req, res) => {
 
   const { id } = req.params;
 
-  db.run(
-    "DELETE FROM contact_requests WHERE id = ?",
-    [id],
-    function (err) {
-      if (err) {
-        console.error("Error deleting contact entry:", err.message);
-        return res
-          .status(500)
-          .json({ error: "Failed to delete contact entry" });
-      }
-
-      if (this.changes === 0) {
-        return res.status(404).json({ error: "Contact entry not found" });
-      }
-
-      res.status(200).json({ message: "Contact entry deleted successfully" });
+  db.run("DELETE FROM contact_requests WHERE id = ?", [id], function (err) {
+    if (err) {
+      console.error("Error deleting contact entry:", err.message);
+      return res.status(500).json({ error: "Failed to delete contact entry" });
     }
-  );
+
+    if (this.changes === 0) {
+      return res.status(404).json({ error: "Contact entry not found" });
+    }
+
+    res.status(200).json({ message: "Contact entry deleted successfully" });
+  });
 });
 // DELETE: Kommentar löschen
 /*
