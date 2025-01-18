@@ -380,6 +380,35 @@ app.post("/api/courses", authenticateToken, (req, res) => {
   );
 });
 
+
+app.post("/contact", async (req, res) => {
+  const { name, email, message } = req.body;
+
+  // Validierung der Eingaben
+  if (!name || !email || !message) {
+    return res.status(400).json({ error: "All fields are required" });
+  }
+
+  // SQL-Abfrage zum Einfügen des neuen Kontaktantrags
+  const query = `
+    INSERT INTO contact_requests (name, email, message, date)
+    VALUES (?, ?, ?, ?)
+  `;
+  const createdAt = new Date().toISOString(); // Zeitstempel
+
+  db.run(query, [name, email, message, createdAt], function (err) {
+    if (err) {
+      console.error("Error inserting contact request:", err.message);
+      return res
+        .status(500)
+        .json({ error: "Failed to save the contact request" });
+    }
+
+    res
+      .status(201)
+      .json({ message: "Contact request submitted successfully" });
+  });
+});
 // API Endpoint zum Abrufen aller Kurse
 /*app.get("/api/courses", authenticateToken, (req, res) => {
   const query = `SELECT courses.*, users.username AS tutor
@@ -1044,6 +1073,78 @@ app.post("/forum/report/:id", authenticateToken, (req, res) => {
   );
 });
 
+
+
+// ANALYTICS PAGE
+
+app.get('/api/analytics', async (req, res) => {
+  try {
+    const authLogs = [
+      { username: 'john_doe', action: 'Login', timestamp: '2025-01-17 12:00:00', ipAddress: '192.168.1.1' },
+      { username: 'jane_doe', action: 'Logout', timestamp: '2025-01-17 13:00:00', ipAddress: '192.168.1.2' },
+    ];
+
+    const profileChanges = [
+      { username: 'john_doe', changeType: 'Email Changed', timestamp: '2025-01-17 11:30:00', ipAddress: '192.168.1.1' },
+    ];
+
+    const interactions = [
+      { username: 'jane_doe', action: 'Enrolled in Course', timestamp: '2025-01-17 14:00:00' },
+    ];
+    console.log("Fetched contact entries from DB:", contactEntries);
+    res.status(200).json({ authLogs, profileChanges, interactions });
+  } catch (error) {
+    console.error('Error fetching analytics data:', error);
+    res.status(500).json({ error: 'Failed to fetch analytics data' });
+  }
+});
+
+app.get("/api/contact-entries", authenticateToken, async (req, res) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ error: "Access denied" });
+  }
+
+  try {
+    const contactEntries = await new Promise((resolve, reject) => {
+      db.all("SELECT * FROM contact_requests", [], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows);
+      });
+    });
+
+    res.status(200).json(contactEntries);
+  } catch (error) {
+    console.error("Error fetching contact entries:", error.message);
+    res.status(500).json({ error: "Failed to fetch contact entries" });
+  }
+});
+
+app.delete("/api/contact-entries/:id", authenticateToken, (req, res) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({ error: "Access denied" });
+  }
+
+  const { id } = req.params;
+
+  db.run(
+    "DELETE FROM contact_requests WHERE id = ?",
+    [id],
+    function (err) {
+      if (err) {
+        console.error("Error deleting contact entry:", err.message);
+        return res
+          .status(500)
+          .json({ error: "Failed to delete contact entry" });
+      }
+
+      if (this.changes === 0) {
+        return res.status(404).json({ error: "Contact entry not found" });
+      }
+
+      res.status(200).json({ message: "Contact entry deleted successfully" });
+    }
+  );
+});
 // DELETE: Kommentar löschen
 /*
 app.delete("/forum/comment/:id", (req, res) => {
