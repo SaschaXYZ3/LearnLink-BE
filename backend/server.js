@@ -275,6 +275,7 @@ app.post("/api/courses", authenticateToken, (req, res) => {
     date,
     time,
     meetingLink,
+    description,
   } = req.body;
 
   const userId = req.user.id; // Die userId des eingeloggten Benutzers
@@ -289,7 +290,8 @@ app.post("/api/courses", authenticateToken, (req, res) => {
     !maxStudents ||
     !date ||
     !time ||
-    !meetingLink
+    !meetingLink ||
+    !description
   ) {
     console.log("Missing required fields");
     return res.status(400).json({ error: "All fields are required" });
@@ -297,8 +299,8 @@ app.post("/api/courses", authenticateToken, (req, res) => {
 
   // SQL Query zum Hinzufügen des Kurses
   const insertCourseQuery = `INSERT INTO courses (
-    title, category, subcategory, level, maxStudents, tutoringType, date, time, meetingLink, userId
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    title, category, subcategory, level, maxStudents, tutoringType, date, time, meetingLink, userId, description
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,  ?)`;
 
   // Logging der Werte, bevor die Datenbankabfrage ausgeführt wird
   console.log("Course Data:", {
@@ -312,6 +314,7 @@ app.post("/api/courses", authenticateToken, (req, res) => {
     time,
     meetingLink,
     userId,
+    description,
   });
 
   // Kurs in der Tabelle 'courses' einfügen
@@ -328,6 +331,7 @@ app.post("/api/courses", authenticateToken, (req, res) => {
       time,
       meetingLink,
       userId,
+      description,
     ],
     function (err) {
       if (err) {
@@ -532,6 +536,7 @@ app.post("/api/book/:courseId", authenticateToken, (req, res) => {
       .json({ error: "An error occurred while fetching courses." });
   }
 });*/
+
 
 app.post("/api/courses/:courseId/favorite", authenticateToken, (req, res) => {
   const courseId = req.params.courseId;
