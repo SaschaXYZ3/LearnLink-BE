@@ -613,7 +613,22 @@ app.post("/api/courses/:courseId/favorite", authenticateToken, (req, res) => {
 app.get("/api/courses/mine", authenticateToken, (req, res) => {
   const userId = req.user.id;
 
-  const query = `SELECT * FROM courses WHERE userId = ?`;
+  const query = `SELECT 
+      courses.id,
+      courses.title,
+      courses.category,
+      courses.subcategory,
+      courses.level,
+      courses.date,
+      courses.time,
+      courses.meetingLink,
+      courses.description,
+      course_availability.maxStudents,
+      course_availability.actualStudents
+    FROM courses
+    JOIN course_availability ON courses.id = course_availability.courseId
+    WHERE courses.userId = ?
+`;
 
   db.all(query, [userId], (err, rows) => {
     if (err) {
