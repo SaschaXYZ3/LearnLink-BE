@@ -1471,6 +1471,33 @@ app.get("/api/export-calendar", authenticateToken, (req, res) => {
 });
 
 
+//PROGRESS & BOOKING
+
+app.get("/api/user/points", authenticateToken, (req, res) => {
+  const userId = req.user.id;
+
+  const query = `
+    SELECT COUNT(*) AS completedCourses
+    FROM course_enrollment
+    WHERE userId = ? AND status = 2; -- Status 2 bedeutet "abgeschlossen"
+  `;
+
+  db.get(query, [userId], (err, row) => {
+    if (err) {
+      console.error("Error fetching points:", err.message);
+      return res.status(500).json({ error: "Database error" });
+    }
+
+    // Berechnung der Punkte: Jeder abgeschlossene Kurs gibt 100 Punkte
+    const points = (row.completedCourses || 0) * 100;
+
+    // Rückgabe der Punkte
+    res.json({ points }); // Hier wird der berechnete Punktewert korrekt zurückgegeben
+  });
+});
+
+
+
 // FORUM SECTION:
 //-----------------
 
