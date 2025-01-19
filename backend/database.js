@@ -68,7 +68,7 @@ db.serialize(() => {
 
   `);
 
-  //FORUM 
+  //FORUM
 
   //posts tabelle
   db.run(`
@@ -82,9 +82,9 @@ db.serialize(() => {
       )
     `);
 
-    //Post interactions tabelle
+  //Post interactions tabelle
 
-    db.run(`
+  db.run(`
       CREATE TABLE IF NOT EXISTS post_interactions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,
@@ -94,7 +94,6 @@ db.serialize(() => {
       UNIQUE(user_id, post_id) -- Ensure one user can interact only once per post
         )
       `);
-  
 
   // Tabelle für Kommentare (Posts verlinken mit Post-ID)
   db.run(`
@@ -185,7 +184,16 @@ db.serialize(() => {
       )
     `);
 
-  
+  db.run(`
+    CREATE TABLE IF NOT EXISTS user_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        userId INTEGER NOT NULL,
+        endpoint TEXT NOT NULL,
+        action TEXT NOT NULL,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (userId) REFERENCES users(id)
+      )
+    `);
   // Add initial roles
   const roles = ["admin", "tutor", "student"];
   roles.forEach((role) => {
