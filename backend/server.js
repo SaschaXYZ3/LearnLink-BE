@@ -976,7 +976,7 @@ app.get("/api/student/bookings", authenticateToken, (req, res) => {
     JOIN courses c ON ce.courseId = c.id
     JOIN course_availability ca ON c.id = ca.courseId
     JOIN booking_status bs ON ce.status = bs.id
-    WHERE ce.userId = ? AND ce.status = 1; -- Status 1 bedeutet "gebucht"
+    WHERE ce.userId = ? 
   `;
 
   db.all(query, [userId], (err, rows) => {
