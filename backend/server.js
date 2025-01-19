@@ -1288,6 +1288,49 @@ app.get("/api/analytics", authenticateToken, (req, res) => {
   });
 });
 
+// Admin Logs
+app.get("/api/analytics", authenticateToken, (req, res) => {
+  if (req.user.roleId !== 0) {
+    return res.status(403).json({ message: "Unauthorized" });
+  }
+
+  // Admin-specific log fetching logic
+});
+
+// Student Logs
+app.get("/api/student/logs", authenticateToken, (req, res) => {
+  const userId = req.user.id;
+
+  const query = `
+    SELECT * FROM user_logs
+    WHERE userId = ? AND action = 'student-specific-action';
+  `;
+
+  db.all(query, [userId], (err, rows) => {
+    if (err) {
+      return res.status(500).json({ message: "Error fetching logs." });
+    }
+    res.status(200).json({ logs: rows });
+  });
+});
+
+// Tutor Logs
+app.get("/api/tutor/logs", authenticateToken, (req, res) => {
+  const userId = req.user.id;
+
+  const query = `
+    SELECT * FROM user_logs
+    WHERE userId = ? AND action = 'tutor-specific-action';
+  `;
+
+  db.all(query, [userId], (err, rows) => {
+    if (err) {
+      return res.status(500).json({ message: "Error fetching logs." });
+    }
+    res.status(200).json({ logs: rows });
+  });
+});
+
 // FORUM SECTION:
 //-----------------
 
