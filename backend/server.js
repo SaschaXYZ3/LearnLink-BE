@@ -1360,6 +1360,63 @@ app.get("/api/tutor/logs", authenticateToken, (req, res) => {
   });
 });
 
+
+//CALENDAR SECTION:
+
+app.get("/api/user/schedule", authenticateToken, (req, res) => {
+  const userId = req.user.id; // User-ID aus dem Token
+  const userRole = req.user.role; // Rolle des Benutzers aus dem Token (z.B. "student", "tutor")
+
+  let query;
+  let queryParams = [userId];
+
+  if (userRole === "student") {
+    // Abfrage für Studenten: Gebuchte oder abgeschlossene Kurse
+    query = `
+      SELECT 
+        ce.id AS enrollmentId,
+        c.title AS courseTitle,
+        c.category,
+        c.subcategory,
+        c.level,
+        c.date,
+        c.time,
+        bs.status AS bookingStatus
+      FROM course_enrollment ce
+      JOIN courses c ON ce.courseId = c.id
+      JOIN booking_status bs ON ce.status = bs.id
+      WHERE ce.userId = ? AND ce.status IN (0, 1); -- Nur gebuchte oder abgeschlossene Kurse
+    `;
+  } else if (userRole === "tutor") {
+    // Abfrage für Tutoren: Ihre eigenen Kurse
+    query = `
+      SELECT 
+        c.id AS courseId,
+        c.title AS courseTitle,
+        c.category,
+        c.subcategory,
+        c.level,
+        c.date,
+        c.time,
+        'Tutor Course' AS bookingStatus -- Ein statischer Status für Tutor-Kurse
+      FROM courses c
+      WHERE c.userId = ?; -- Nur Kurse des Tutors
+    `;
+  } else {
+    return res.status(403).json({ error: "Unauthorized access" });
+  }
+
+  // Query ausführen
+  db.all(query, queryParams, (err, rows) => {
+    if (err) {
+      console.error("Error fetching schedule:", err.message);
+      return res.status(500).json({ error: "Database error" });
+    }
+
+    res.status(200).json({ events: rows });
+  });
+});
+
 // FORUM SECTION:
 //-----------------
 
