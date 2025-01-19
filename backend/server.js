@@ -1496,7 +1496,35 @@ app.get("/api/user/points", authenticateToken, (req, res) => {
   });
 });
 
+// BROWSER NOTIFICATION
+app.get("/api/user/upcoming-courses", authenticateToken, (req, res) => {
+  const userId = req.user.id;
 
+  const query = `
+    SELECT 
+      c.title AS title,
+      c.date AS date,
+      c.time AS time
+    FROM courses c
+    JOIN course_enrollment ce ON c.id = ce.courseId
+    WHERE ce.userId = ?; -- Nur Kurse des aktuellen Nutzers
+  `;
+
+  db.all(query, [userId], (err, rows) => {
+    if (err) {
+      console.error("Error fetching upcoming courses:", err.message);
+      return res.status(500).json({ error: "Database error" });
+    }
+
+    const now = new Date();
+    const upcomingCourses = rows.filter((course) => {
+      const courseDateTime = new Date(`${course.date}T${course.time}`);
+      return courseDateTime > now && courseDateTime - now <= 3600000; // In der nächsten Stunde
+    });
+
+    res.json(upcomingCourses);
+  });
+});
 
 // FORUM SECTION:
 //-----------------
