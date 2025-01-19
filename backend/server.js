@@ -1570,7 +1570,8 @@ app.post("/forum", (req, res) => {
 
 // POST: Kommentar hinzufügen
 app.post("/forum/comment", (req, res) => {
-  const userId = req.user.id;
+  const { postId, comment, username } = req.body;
+  //const userId = req.user.id;
 
   if (!postId || !comment || !username) {
     return res
