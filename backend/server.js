@@ -427,8 +427,8 @@ app.post("/contact", async (req, res) => {
 });*/
 
 // API Endpoint zum Abrufen aller Kurse mit erweiterten Informationen
-app.get("/api/courses", (req, res) => {
-  //const userId = req.user.id; // Aus dem Token abgeleiteter Benutzer
+app.get("/api/courses",authenticateToken, (req, res) => {
+  const userId = req.user.id; // Aus dem Token abgeleiteter Benutzer
 
   const query = `
     SELECT 
@@ -452,11 +452,34 @@ app.get("/api/courses", (req, res) => {
     GROUP BY courses.id;
   `;
 
-  db.all(query, (err, rows) => {
+  db.all(query, [userId, userId], (err, rows) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
     res.json(rows);
+  });
+});
+
+app.get("/api/public/courses", (req, res) => {
+  const query = `
+    SELECT 
+      courses.*, 
+      course_availability.maxStudents,
+      course_availability.actualStudents,
+      users.username AS tutor
+    FROM courses
+    JOIN users ON courses.userId = users.id
+    LEFT JOIN course_availability ON course_availability.courseId = courses.id
+    GROUP BY courses.id;
+  `;
+
+  db.all(query, (err, rows) => {
+    if (err) {
+      console.error("Datenbankfehler:", err.message);
+      return res.status(500).json({ error: "Fehler beim Abrufen der Kurse" });
+    }
+
+    res.status(200).json(rows);
   });
 });
 
@@ -928,6 +951,117 @@ app.get("/api/courses/:courseId/students", async (req, res) => {
     res.status(500).json({ error: "Failed to load course seats" });
   }
 });
+
+
+//STUDENT VIEW SECTION
+
+// API Endpoint, um die Kurse des eingeloggten Studenten zu holen
+app.get("/api/student/bookings", authenticateToken, (req, res) => {
+  const userId = req.user.id; // Benutzer-ID aus dem Token
+
+  const query = `
+    SELECT 
+        ce.id AS enrollmentId,
+        c.id AS courseId,
+        c.title AS courseTitle,
+        c.category,
+        c.subcategory,
+        c.level,
+        c.date,
+        c.time,
+        c.description,
+        ca.maxStudents,
+        ca.actualStudents,
+        bs.status AS bookingStatus
+    FROM course_enrollment ce
+    JOIN courses c ON ce.courseId = c.id
+    JOIN course_availability ca ON c.id = ca.courseId
+    JOIN booking_status bs ON ce.status = bs.id
+    WHERE ce.userId = ? AND ce.status = 1; -- Status 1 bedeutet "gebucht"
+  `;
+
+  db.all(query, [userId], (err, rows) => {
+    if (err) {
+      console.error("Fehler beim Abrufen der Buchungen:", err.message);
+      return res.status(500).json({ error: "Datenbankfehler" });
+    }
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "Keine Buchungen gefunden" });
+    }
+
+    res.status(200).json(rows); // Rückgabe der gefundenen Daten
+  });
+});
+
+app.get("/api/courses/:courseId/reviews", (req, res) => {
+  const { courseId } = req.params;
+
+  const query = `
+      SELECT 
+          cr.rating, cr.comment, cr.date, u.username 
+      FROM course_reviews cr
+      JOIN users u ON cr.userId = u.id
+      WHERE cr.courseId = ?
+      ORDER BY cr.date DESC
+  `;
+
+  db.all(query, [courseId], (err, rows) => {
+      if (err) {
+          return res.status(500).json({ error: "Database error while fetching reviews." });
+      }
+      res.status(200).json(rows);
+  });
+});
+
+app.post("/api/courses/:courseId/review", authenticateToken, (req, res) => {
+  const { courseId } = req.params;
+  const { rating, comment } = req.body;
+  const userId = req.user.id;
+
+  // Validate inputs
+  if (!rating || rating < 1 || rating > 5) {
+      return res.status(400).json({ error: "Invalid rating. Must be between 1 and 5." });
+  }
+
+  const checkQuery = `
+      SELECT * FROM course_reviews WHERE userId = ? AND courseId = ?
+  `;
+
+  db.get(checkQuery, [userId, courseId], (err, row) => {
+      if (err) {
+          return res.status(500).json({ error: "Database error while checking review." });
+      }
+
+      if (row) {
+          // Update existing review
+          const updateQuery = `
+              UPDATE course_reviews 
+              SET rating = ?, comment = ?, date = CURRENT_TIMESTAMP 
+              WHERE userId = ? AND courseId = ?
+          `;
+          db.run(updateQuery, [rating, comment, userId, courseId], (err) => {
+              if (err) {
+                  return res.status(500).json({ error: "Database error while updating review." });
+              }
+              return res.status(200).json({ message: "Review updated successfully." });
+          });
+      } else {
+          // Insert new review
+          const insertQuery = `
+              INSERT INTO course_reviews (courseId, userId, rating, comment, date)
+              VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+          `;
+          db.run(insertQuery, [courseId, userId, rating, comment], (err) => {
+              if (err) {
+                  return res.status(500).json({ error: "Database error while adding review." });
+              }
+              return res.status(201).json({ message: "Review added successfully." });
+          });
+      }
+  });
+});
+
 
 // FORUM SECTION:
 //-----------------
