@@ -971,12 +971,16 @@ app.get("/api/student/bookings", authenticateToken, (req, res) => {
         c.description,
         ca.maxStudents,
         ca.actualStudents,
-        bs.status AS bookingStatus
+        bs.status AS bookingStatus,
+        cr.rating AS userRating -- Bewertung des Benutzers
     FROM course_enrollment ce
     JOIN courses c ON ce.courseId = c.id
     JOIN course_availability ca ON c.id = ca.courseId
     JOIN booking_status bs ON ce.status = bs.id
-    WHERE ce.userId = ? 
+    LEFT JOIN course_reviews cr 
+      ON cr.courseId = ce.courseId 
+      AND cr.userId = ce.userId -- Benutzer- und Kurs-basierte Verknüpfung
+    WHERE ce.userId = ?; -- Filtert nur Buchungen des aktuellen Benutzers
   `;
 
   db.all(query, [userId], (err, rows) => {
