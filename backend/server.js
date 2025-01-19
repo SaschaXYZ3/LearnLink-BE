@@ -244,6 +244,7 @@ app.get("/api/protected", authenticateToken, (req, res) => {
   res.json({ message: "This is a protected route", user: req.user });
 });
 
+//ADMIN DASHBOARD
 // Get all users (Admin Dashboard)
 app.get("/admin", authenticateToken, (req, res) => {
   if (req.user.role !== "admin") {
@@ -265,6 +266,111 @@ app.get("/admin", authenticateToken, (req, res) => {
     }
   );
 });
+
+//ADMIN --> USER DATEN ÄNDERN
+app.put("/admin/user/:id", authenticateToken, (req, res) => {
+  const { id } = req.params;
+  const { username, email, birthDate } = req.body;
+
+  if (req.user.role !== "admin") {
+    return res
+      .status(403)
+      .json({ error: "Access denied, you are not an admin" });
+  }
+
+  // Validierung der Eingaben
+  if (!username || !email || !birthDate) {
+    return res.status(400).json({
+      error: "All fields (username, email, birthDate) are required",
+    });
+  }
+
+  // SQL-Abfrage für das Update
+  const query =
+    "UPDATE users SET username = ?, email = ?, birthDate = ? WHERE id = ?";
+  db.run(query, [username, email, birthDate, id], function (err) {
+    if (err) {
+      return res
+        .status(500)
+        .json({ error: "Failed to update user", details: err.message });
+    }
+
+    if (this.changes === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.json({ message: "User updated successfully", userId: id });
+  });
+});
+
+// ADMIN --> LÖSCHEN EINES USERS
+app.delete("/admin/user/:id", authenticateToken, (req, res) => {
+  const { id } = req.params;
+
+  if (req.user.role !== "admin") {
+    return res
+      .status(403)
+      .json({ error: "Access denied, you are not an admin" });
+  }
+
+  // SQL-Abfrage für das Löschen des Benutzers
+  const query = "DELETE FROM users WHERE id = ?";
+  db.run(query, [id], function (err) {
+    if (err) {
+      return res
+        .status(500)
+        .json({ error: "Failed to delete user", details: err.message });
+    }
+
+    if (this.changes === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.json({ message: "User deleted successfully", userId: id });
+  });
+});
+
+
+// ADMIN --> PASSWORD RESET
+app.post("/admin/user/:id/reset-password", authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { newPassword } = req.body;
+
+  if (req.user.role !== "admin") {
+    return res
+      .status(403)
+      .json({ error: "Access denied, you are not an admin" });
+  }
+
+  // Validate password
+  if (!newPassword || newPassword.length < 6) {
+    return res.status(400).json({
+      error: "Password must be at least 6 characters long",
+    });
+  }
+
+  // hash password
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+  const query = "UPDATE users SET password = ? WHERE id = ?";
+  db.run(query, [hashedPassword, id], function (err) {
+    if (err) {
+      return res
+        .status(500)
+        .json({ error: "Failed to reset password", details: err.message });
+    }
+
+    if (this.changes === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.json({ message: "Password reset successfully", userId: id });
+  });
+});
+
+
+
+
 
 // API Endpoint um einen Kurs hinzuzufügen
 app.post("/api/courses", authenticateToken, (req, res) => {
