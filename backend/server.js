@@ -128,11 +128,11 @@ app.post("/login", (req, res) => {
     [username],
     (err, user) => {
       if (err || !user) {
-        return res.status(401).json({ error: "Invalid credentials" });
+        return res.status(401).json({ error: "Invalid Username" });
       }
 
       if (!bcrypt.compareSync(password, user.password)) {
-        return res.status(401).json({ error: "Invalid credentials" });
+        return res.status(401).json({ error: "Invalid Password" });
       }
 
       const token = jwt.sign(
@@ -140,6 +140,8 @@ app.post("/login", (req, res) => {
         SECRET_KEY,
         { expiresIn: 86400 }
       );
+
+      logUserActivity(user.id, "/api/login", "login");
 
       res.json({
         id: user.id,
@@ -221,6 +223,7 @@ app.post("/api/user/update", authenticateToken, async (req, res) => {
         (err) => {
           if (err)
             return res.status(500).json({ error: "Database update error" });
+          logUserActivity(userId, "/api/user/update", "password changed");
           res.json({ message: "Profile updated successfully" });
         }
       );
@@ -232,6 +235,7 @@ app.post("/api/user/update", authenticateToken, async (req, res) => {
         (err) => {
           if (err)
             return res.status(500).json({ error: "Database update error" });
+          logUserActivity(userId, "/api/user/update", "updated user profile");
           res.json({ message: "Profile updated successfully" });
         }
       );
@@ -374,6 +378,7 @@ app.post("/api/courses", authenticateToken, (req, res) => {
             "Availability entry created successfully for course ID:",
             courseId
           );
+          logUserActivity(userId, "/api/courses", "created course");
           res.status(201).json({
             message: "Course added successfully",
             courseId: this.lastID,
@@ -554,6 +559,12 @@ app.post("/api/book/:courseId", authenticateToken, (req, res) => {
             console.log(
               `Buchung erfolgreich für Benutzer mit ID ${userId} für Kurs mit ID ${courseId}`
             );
+            logUserActivity(
+              userId,
+              `/api/book/${courseId}`,
+              "course requested"
+            );
+
             return res.status(200).json({
               message: "Sie haben sich erfolgreich für den Kurs angemeldet.",
             });
@@ -564,34 +575,7 @@ app.post("/api/book/:courseId", authenticateToken, (req, res) => {
   });
 });
 
-/*app.get("/api/courses", async (req, res) => {
-  try {
-    const allCourses = await courses.findAll({
-      include: [
-        {
-          model: course_availability,
-          attributes: ["maxStudents", "actualStudents"],
-        },
-        {
-          model: course_reviews,
-          attributes: ["rating", "comment", "date"],
-        },
-        {
-          model: course_enrollment,
-          attributes: ["userId", "status", "isFavorite"],
-        },
-      ],
-    });
-
-    res.status(200).json(allCourses);
-  } catch (error) {
-    console.error("Error fetching courses:", error);
-    res
-      .status(500)
-      .json({ error: "An error occurred while fetching courses." });
-  }
-});*/
-
+//toggle favorite
 app.post("/api/courses/:courseId/favorite", authenticateToken, (req, res) => {
   const courseId = req.params.courseId;
   const userId = req.user.id; // Angemeldeter Benutzer aus dem Token
@@ -614,6 +598,11 @@ app.post("/api/courses/:courseId/favorite", authenticateToken, (req, res) => {
             .status(500)
             .json({ error: "Fehler beim Entfernen des Favoriten." });
         }
+        logUserActivity(
+          userId,
+          `/api/courses/${courseId}/favorite`,
+          "removed favorite"
+        );
         res.status(200).json({ isFavorite: false });
       });
     } else {
@@ -626,6 +615,11 @@ app.post("/api/courses/:courseId/favorite", authenticateToken, (req, res) => {
             .status(500)
             .json({ error: "Fehler beim Hinzufügen des Favoriten." });
         }
+        logUserActivity(
+          userId,
+          `/api/courses/${courseId}/favorite`,
+          "added favorite"
+        );
         res.status(200).json({ isFavorite: true });
       });
     }
@@ -718,7 +712,7 @@ app.delete("/api/courses/:id", authenticateToken, (req, res) => {
         console.error("Database error:", err.message);
         return res.status(500).json({ error: "Failed to delete course" });
       }
-
+      logUserActivity(userId, `/api/courses/${id}`, "removed course");
       res
         .status(200)
         .json({ message: `Course with ID ${id} deleted successfully` });
@@ -969,21 +963,14 @@ app.get("/api/student/bookings", authenticateToken, (req, res) => {
         c.date,
         c.time,
         c.description,
-        c.userId AS tutorId,
-        u.username AS tutorName,
         ca.maxStudents,
         ca.actualStudents,
-        bs.status AS bookingStatus,
-        cr.rating AS userRating -- Bewertung des Benutzers
+        bs.status AS bookingStatus
     FROM course_enrollment ce
     JOIN courses c ON ce.courseId = c.id
-    JOIN users u on c.userId = u.id -- Verknüofung mit tabelle users
     JOIN course_availability ca ON c.id = ca.courseId
     JOIN booking_status bs ON ce.status = bs.id
-    LEFT JOIN course_reviews cr 
-      ON cr.courseId = ce.courseId 
-      AND cr.userId = ce.userId -- Benutzer- und Kurs-basierte Verknüpfung
-    WHERE ce.userId = ?; -- Filtert nur Buchungen des aktuellen Benutzers
+    WHERE ce.userId = ? 
   `;
 
   db.all(query, [userId], (err, rows) => {
@@ -1074,6 +1061,11 @@ app.post("/api/courses/:courseId/review", authenticateToken, (req, res) => {
             .status(500)
             .json({ error: "Database error while adding review." });
         }
+        logUserActivity(
+          userId,
+          `/api/courses/${courseId}/review`,
+          "added review"
+        );
         return res.status(201).json({ message: "Review added successfully." });
       });
     }
@@ -1125,6 +1117,23 @@ app.get("/user/progress", authenticateToken, (req, res) => {
   });
 });
 
+//LOGGING:
+//----------------
+const logUserActivity = (userId, endpoint, action) => {
+  const query = `
+    INSERT INTO user_logs (userId, endpoint, action)
+    VALUES (?, ?, ?)
+  `;
+
+  db.run(query, [userId, endpoint, action], (err) => {
+    if (err) {
+      console.error("Error logging user activity:", err.message);
+    } else {
+      console.log(`Logged activity: ${action} for user ${userId}`);
+    }
+  });
+};
+
 // FORUM SECTION:
 //-----------------
 
@@ -1148,6 +1157,7 @@ app.get("/forum", (req, res) => {
 // POST: Neuen Beitrag hinzufügen
 app.post("/forum", (req, res) => {
   const { title, content, username } = req.body;
+  const userId = req.user.id;
 
   if (!title || !content || !username) {
     return res
@@ -1160,13 +1170,14 @@ app.post("/forum", (req, res) => {
     if (err) {
       return res.status(500).json({ error: "Error adding the post" });
     }
+
     res.status(201).json({ id: this.lastID, title, content, username });
   });
 });
 
 // POST: Kommentar hinzufügen
 app.post("/forum/comment", (req, res) => {
-  const { postId, comment, username } = req.body;
+  const userId = req.user.id;
 
   if (!postId || !comment || !username) {
     return res
@@ -1180,6 +1191,7 @@ app.post("/forum/comment", (req, res) => {
       console.error("Error adding comment:", err.message);
       return res.status(500).json({ error: "Error adding the comment" });
     }
+
     res.status(201).json({ id: this.lastID, comment, username });
   });
 });
@@ -1296,32 +1308,6 @@ app.post("/forum/report/:id", authenticateToken, (req, res) => {
       });
     }
   );
-});
-
-
-// TUTOR RATINGS
-
-app.get("/api/tutor/ratings", authenticateToken, (req, res) => {
-  const query = `
-    SELECT 
-        c.userId AS tutorId,
-        u.username AS tutorName,
-        AVG(cr.rating) AS averageRating,
-        COUNT(cr.id) AS totalRatings
-    FROM course_reviews cr
-    JOIN courses c ON cr.courseId = c.id
-    JOIN users u ON c.userId = u.id
-    GROUP BY c.userId;
-  `;
-
-  db.all(query, [], (err, rows) => {
-    if (err) {
-      console.error("Fehler beim Abrufen der Bewertungen:", err.message);
-      return res.status(500).json({ error: "Datenbankfehler" });
-    }
-
-    res.status(200).json(rows); // Rückgabe der Ratings pro Tutor
-  });
 });
 
 // ANALYTICS PAGE
