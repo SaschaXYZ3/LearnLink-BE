@@ -969,12 +969,15 @@ app.get("/api/student/bookings", authenticateToken, (req, res) => {
         c.date,
         c.time,
         c.description,
+        c.userId AS tutorId,
+        u.username AS tutorName,
         ca.maxStudents,
         ca.actualStudents,
         bs.status AS bookingStatus,
         cr.rating AS userRating -- Bewertung des Benutzers
     FROM course_enrollment ce
     JOIN courses c ON ce.courseId = c.id
+    JOIN users u on c.userId = u.id -- Verknüofung mit tabelle users
     JOIN course_availability ca ON c.id = ca.courseId
     JOIN booking_status bs ON ce.status = bs.id
     LEFT JOIN course_reviews cr 
@@ -1293,6 +1296,32 @@ app.post("/forum/report/:id", authenticateToken, (req, res) => {
       });
     }
   );
+});
+
+
+// TUTOR RATINGS
+
+app.get("/api/tutor/ratings", authenticateToken, (req, res) => {
+  const query = `
+    SELECT 
+        c.userId AS tutorId,
+        u.username AS tutorName,
+        AVG(cr.rating) AS averageRating,
+        COUNT(cr.id) AS totalRatings
+    FROM course_reviews cr
+    JOIN courses c ON cr.courseId = c.id
+    JOIN users u ON c.userId = u.id
+    GROUP BY c.userId;
+  `;
+
+  db.all(query, [], (err, rows) => {
+    if (err) {
+      console.error("Fehler beim Abrufen der Bewertungen:", err.message);
+      return res.status(500).json({ error: "Datenbankfehler" });
+    }
+
+    res.status(200).json(rows); // Rückgabe der Ratings pro Tutor
+  });
 });
 
 // ANALYTICS PAGE
