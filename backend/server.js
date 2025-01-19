@@ -334,47 +334,46 @@ app.delete("/admin/user/:id", authenticateToken, (req, res) => {
   });
 });
 
-
 // ADMIN --> PASSWORD RESET
-app.post("/admin/user/:id/reset-password", authenticateToken, async (req, res) => {
-  const { id } = req.params;
-  const { newPassword } = req.body;
+app.post(
+  "/admin/user/:id/reset-password",
+  authenticateToken,
+  async (req, res) => {
+    const { id } = req.params;
+    const { newPassword } = req.body;
 
-  if (req.user.role !== "admin") {
-    return res
-      .status(403)
-      .json({ error: "Access denied, you are not an admin" });
-  }
+    if (req.user.role !== "admin") {
+      return res
+        .status(403)
+        .json({ error: "Access denied, you are not an admin" });
+    }
 
-  // Validate password
-  if (!newPassword || newPassword.length < 6) {
-    return res.status(400).json({
-      error: "Password must be at least 6 characters long",
+    // Validate password
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({
+        error: "Password must be at least 6 characters long",
+      });
+    }
+
+    // hash password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    const query = "UPDATE users SET password = ? WHERE id = ?";
+    db.run(query, [hashedPassword, id], function (err) {
+      if (err) {
+        return res
+          .status(500)
+          .json({ error: "Failed to reset password", details: err.message });
+      }
+
+      if (this.changes === 0) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      res.json({ message: "Password reset successfully", userId: id });
     });
   }
-
-  // hash password
-  const hashedPassword = await bcrypt.hash(newPassword, 10);
-
-  const query = "UPDATE users SET password = ? WHERE id = ?";
-  db.run(query, [hashedPassword, id], function (err) {
-    if (err) {
-      return res
-        .status(500)
-        .json({ error: "Failed to reset password", details: err.message });
-    }
-
-    if (this.changes === 0) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    res.json({ message: "Password reset successfully", userId: id });
-  });
-});
-
-
-
-
+);
 
 // API Endpoint um einen Kurs hinzuzufügen
 app.post("/api/courses", authenticateToken, (req, res) => {
@@ -1069,14 +1068,21 @@ app.get("/api/student/bookings", authenticateToken, (req, res) => {
         c.date,
         c.time,
         c.description,
+        c.userId AS tutorId,
+        u.username AS tutorName,
         ca.maxStudents,
         ca.actualStudents,
-        bs.status AS bookingStatus
+        bs.status AS bookingStatus,
+        cr.rating AS userRating -- Bewertung des Benutzers
     FROM course_enrollment ce
     JOIN courses c ON ce.courseId = c.id
+    JOIN users u on c.userId = u.id -- Verknüofung mit tabelle users
     JOIN course_availability ca ON c.id = ca.courseId
     JOIN booking_status bs ON ce.status = bs.id
-    WHERE ce.userId = ? 
+    LEFT JOIN course_reviews cr 
+      ON cr.courseId = ce.courseId 
+      AND cr.userId = ce.userId -- Benutzer- und Kurs-basierte Verknüpfung
+    WHERE ce.userId = ?; -- Filtert nur Buchungen des aktuellen Benutzers
   `;
 
   db.all(query, [userId], (err, rows) => {
@@ -1089,7 +1095,7 @@ app.get("/api/student/bookings", authenticateToken, (req, res) => {
       return res.status(404).json({ message: "Keine Buchungen gefunden" });
     }
 
-    res.status(200).json(rows); // Rückgabe der gefundenen Daten
+    res.status(200).json(rows); // Rückgabe der gefundenen Daten
   });
 });
 
