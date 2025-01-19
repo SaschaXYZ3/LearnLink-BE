@@ -1134,6 +1134,48 @@ const logUserActivity = (userId, endpoint, action) => {
   });
 };
 
+app.get("/api/analytics", authenticateToken, (req, res) => {
+  const userId = req.user.id;
+
+  // SQL-Abfrage, um alle Logs des Benutzers zu erhalten
+  const query = `
+    SELECT 
+      id,
+      endpoint,
+      action,
+      timeStamp
+    FROM user_logs
+    WHERE userId = ?
+    ORDER BY timeStamp DESC
+  `;
+
+  db.all(query, [userId], (err, rows) => {
+    if (err) {
+      console.error("Fehler beim Abrufen der Benutzerlogs:", err.message);
+      return res.status(500).json({ error: "Datenbankfehler" });
+    }
+
+    if (!rows || rows.length === 0) {
+      return res
+        .status(404)
+        .json({ message: "Keine Logs für diesen Benutzer gefunden." });
+    }
+
+    // Antwortstruktur
+    const analytics = {
+      userId: userId,
+      logs: rows.map((row) => ({
+        logId: row.id,
+        endpoint: row.endpoint,
+        action: row.action,
+        timeStamp: row.timeStamp,
+      })),
+    };
+
+    res.status(200).json(analytics);
+  });
+});
+
 // FORUM SECTION:
 //-----------------
 
