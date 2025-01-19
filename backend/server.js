@@ -427,8 +427,8 @@ app.post("/contact", async (req, res) => {
 });*/
 
 // API Endpoint zum Abrufen aller Kurse mit erweiterten Informationen
-app.get("/api/courses", (req, res) => {
-  //const userId = req.user.id; // Aus dem Token abgeleiteter Benutzer
+app.get("/api/courses",authenticateToken, (req, res) => {
+  const userId = req.user.id; // Aus dem Token abgeleiteter Benutzer
 
   const query = `
     SELECT 
@@ -452,11 +452,34 @@ app.get("/api/courses", (req, res) => {
     GROUP BY courses.id;
   `;
 
-  db.all(query, (err, rows) => {
+  db.all(query, [userId, userId], (err, rows) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
     res.json(rows);
+  });
+});
+
+app.get("/api/public/courses", (req, res) => {
+  const query = `
+    SELECT 
+      courses.*, 
+      course_availability.maxStudents,
+      course_availability.actualStudents,
+      users.username AS tutor
+    FROM courses
+    JOIN users ON courses.userId = users.id
+    LEFT JOIN course_availability ON course_availability.courseId = courses.id
+    GROUP BY courses.id;
+  `;
+
+  db.all(query, (err, rows) => {
+    if (err) {
+      console.error("Datenbankfehler:", err.message);
+      return res.status(500).json({ error: "Fehler beim Abrufen der Kurse" });
+    }
+
+    res.status(200).json(rows);
   });
 });
 
