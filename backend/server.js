@@ -1417,6 +1417,60 @@ app.get("/api/user/schedule", authenticateToken, (req, res) => {
   });
 });
 
+
+const { writeFileSync } = require("fs");
+const { createEvents } = require("ics");
+const path = require("path");
+
+app.get("/api/export-calendar", authenticateToken, (req, res) => {
+  const userId = req.user.id;
+
+  const query = `
+    SELECT 
+      c.title AS courseTitle,
+      c.date,
+      c.time,
+      c.description
+    FROM courses c
+    JOIN course_enrollment ce ON c.id = ce.courseId
+    WHERE ce.userId = ?; -- Nur Kurse des eingeloggten Benutzers
+  `;
+
+  db.all(query, [userId], (err, rows) => {
+    if (err) {
+      console.error("Error fetching events:", err.message);
+      return res.status(500).json({ error: "Database error" });
+    }
+
+    // Erstelle das Kalender-Event-Array für das `.ics`-Format
+    const events = rows.map((event) => ({
+      start: [...event.date.split("-"), ...event.time.split(":")], // z.B. [2025, 01, 19, 18, 30]
+      duration: { hours: 1 }, // Standarddauer: 1 Stunde
+      title: event.courseTitle,
+      description: event.description || "No description",
+      location: "Online", // Optional: Kann angepasst werden
+      url: "https://your-platform.com", // Optional: Link zur Plattform
+    }));
+
+    // Erstelle die .ics-Datei
+    createEvents(events, (error, value) => {
+      if (error) {
+        console.error("Error creating ICS file:", error);
+        return res.status(500).json({ error: "Failed to create calendar" });
+      }
+
+      const filePath = path.join(__dirname, "calendar.ics");
+      writeFileSync(filePath, value);
+
+      // Sende die Datei an den Client
+      res.download(filePath, "calendar.ics", (err) => {
+        if (err) console.error("Error sending ICS file:", err);
+      });
+    });
+  });
+});
+
+
 // FORUM SECTION:
 //-----------------
 
