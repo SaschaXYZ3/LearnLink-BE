@@ -427,7 +427,7 @@ app.post("/contact", async (req, res) => {
 });*/
 
 // API Endpoint zum Abrufen aller Kurse mit erweiterten Informationen
-app.get("/api/courses",authenticateToken, (req, res) => {
+app.get("/api/courses", authenticateToken, (req, res) => {
   const userId = req.user.id; // Aus dem Token abgeleiteter Benutzer
 
   const query = `
@@ -952,7 +952,6 @@ app.get("/api/courses/:courseId/students", async (req, res) => {
   }
 });
 
-
 //STUDENT VIEW SECTION
 
 // API Endpoint, um die Kurse des eingeloggten Studenten zu holen
@@ -1007,10 +1006,12 @@ app.get("/api/courses/:courseId/reviews", (req, res) => {
   `;
 
   db.all(query, [courseId], (err, rows) => {
-      if (err) {
-          return res.status(500).json({ error: "Database error while fetching reviews." });
-      }
-      res.status(200).json(rows);
+    if (err) {
+      return res
+        .status(500)
+        .json({ error: "Database error while fetching reviews." });
+    }
+    res.status(200).json(rows);
   });
 });
 
@@ -1021,7 +1022,9 @@ app.post("/api/courses/:courseId/review", authenticateToken, (req, res) => {
 
   // Validate inputs
   if (!rating || rating < 1 || rating > 5) {
-      return res.status(400).json({ error: "Invalid rating. Must be between 1 and 5." });
+    return res
+      .status(400)
+      .json({ error: "Invalid rating. Must be between 1 and 5." });
   }
 
   const checkQuery = `
@@ -1029,39 +1032,91 @@ app.post("/api/courses/:courseId/review", authenticateToken, (req, res) => {
   `;
 
   db.get(checkQuery, [userId, courseId], (err, row) => {
-      if (err) {
-          return res.status(500).json({ error: "Database error while checking review." });
-      }
+    if (err) {
+      return res
+        .status(500)
+        .json({ error: "Database error while checking review." });
+    }
 
-      if (row) {
-          // Update existing review
-          const updateQuery = `
+    if (row) {
+      // Update existing review
+      const updateQuery = `
               UPDATE course_reviews 
               SET rating = ?, comment = ?, date = CURRENT_TIMESTAMP 
               WHERE userId = ? AND courseId = ?
           `;
-          db.run(updateQuery, [rating, comment, userId, courseId], (err) => {
-              if (err) {
-                  return res.status(500).json({ error: "Database error while updating review." });
-              }
-              return res.status(200).json({ message: "Review updated successfully." });
-          });
-      } else {
-          // Insert new review
-          const insertQuery = `
+      db.run(updateQuery, [rating, comment, userId, courseId], (err) => {
+        if (err) {
+          return res
+            .status(500)
+            .json({ error: "Database error while updating review." });
+        }
+        return res
+          .status(200)
+          .json({ message: "Review updated successfully." });
+      });
+    } else {
+      // Insert new review
+      const insertQuery = `
               INSERT INTO course_reviews (courseId, userId, rating, comment, date)
               VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
           `;
-          db.run(insertQuery, [courseId, userId, rating, comment], (err) => {
-              if (err) {
-                  return res.status(500).json({ error: "Database error while adding review." });
-              }
-              return res.status(201).json({ message: "Review added successfully." });
-          });
-      }
+      db.run(insertQuery, [courseId, userId, rating, comment], (err) => {
+        if (err) {
+          return res
+            .status(500)
+            .json({ error: "Database error while adding review." });
+        }
+        return res.status(201).json({ message: "Review added successfully." });
+      });
+    }
   });
 });
 
+// Endpoint: Fortschrittsdaten für einen Student abrufen
+app.get("/user/progress", authenticateToken, (req, res) => {
+  const userId = req.user.id; // Benutzer-ID aus dem JWT-Token extrahieren
+
+  const totalQuery = `
+      SELECT COUNT(*) AS total
+      FROM course_enrollment
+      WHERE userId = ? AND status IN (1,3)
+  `;
+
+  const completedQuery = `
+      SELECT COUNT(*) AS completed
+      FROM course_enrollment
+      WHERE userId = ? AND status = 2
+  `;
+
+  db.serialize(() => {
+    db.get(totalQuery, [userId], (err, totalResult) => {
+      if (err) {
+        console.error("Fehler beim Abrufen der Gesamtkurse:", err.message);
+        return res
+          .status(500)
+          .json({ error: "Fehler beim Abrufen der Gesamtkurse" });
+      }
+
+      db.get(completedQuery, [userId], (err, completedResult) => {
+        if (err) {
+          console.error(
+            "Fehler beim Abrufen der abgeschlossenen Kurse:",
+            err.message
+          );
+          return res
+            .status(500)
+            .json({ error: "Fehler beim Abrufen der abgeschlossenen Kurse" });
+        }
+
+        res.json({
+          total: totalResult.total || 0,
+          completed: completedResult.completed || 0,
+        });
+      });
+    });
+  });
+});
 
 // FORUM SECTION:
 //-----------------
