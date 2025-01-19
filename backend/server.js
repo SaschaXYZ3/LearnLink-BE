@@ -303,6 +303,8 @@ app.put("/admin/user/:id", authenticateToken, (req, res) => {
       return res.status(404).json({ error: "User not found" });
     }
 
+    logUserActivity("1", `/admin/user/${id}`, "Admin changed user data.");
+
     res.json({ message: "User updated successfully", userId: id });
   });
 });
@@ -369,6 +371,8 @@ app.post(
       if (this.changes === 0) {
         return res.status(404).json({ error: "User not found" });
       }
+
+      logUserActivity("1", `/admin/user/${id}/reset-password`, "Admin reset password.");
 
       res.json({ message: "Password reset successfully", userId: id });
     });
