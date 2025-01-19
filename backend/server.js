@@ -372,7 +372,11 @@ app.post(
         return res.status(404).json({ error: "User not found" });
       }
 
-      logUserActivity("1", `/admin/user/${id}/reset-password`, "Admin reset password.");
+      logUserActivity(
+        "1",
+        `/admin/user/${id}/reset-password`,
+        "Admin reset password."
+      );
 
       res.json({ message: "Password reset successfully", userId: id });
     });
@@ -1360,7 +1364,6 @@ app.get("/api/tutor/logs", authenticateToken, (req, res) => {
   });
 });
 
-
 //CALENDAR SECTION:
 
 app.get("/api/user/schedule", authenticateToken, (req, res) => {
@@ -1417,7 +1420,6 @@ app.get("/api/user/schedule", authenticateToken, (req, res) => {
   });
 });
 
-
 const { writeFileSync } = require("fs");
 const { createEvents } = require("ics");
 const path = require("path");
@@ -1469,7 +1471,6 @@ app.get("/api/export-calendar", authenticateToken, (req, res) => {
     });
   });
 });
-
 
 //PROGRESS & BOOKING
 
@@ -1549,7 +1550,7 @@ app.get("/forum", (req, res) => {
 // POST: Neuen Beitrag hinzufügen
 app.post("/forum", (req, res) => {
   const { title, content, username } = req.body;
-  const userId = req.user.id;
+  //const userId = req.user.id;
 
   if (!title || !content || !username) {
     return res
