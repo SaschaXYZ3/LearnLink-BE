@@ -785,6 +785,31 @@ app.get("/api/courses/:id", authenticateToken, (req, res) => {
   });
 });
 
+// TUTOR RATINGS
+
+app.get("/api/tutor/ratings", authenticateToken, (req, res) => {
+  const query = `
+    SELECT 
+        c.userId AS tutorId,
+        u.username AS tutorName,
+        AVG(cr.rating) AS averageRating,
+        COUNT(cr.id) AS totalRatings
+    FROM course_reviews cr
+    JOIN courses c ON cr.courseId = c.id
+    JOIN users u ON c.userId = u.id
+    GROUP BY c.userId;
+  `;
+
+  db.all(query, [], (err, rows) => {
+    if (err) {
+      console.error("Fehler beim Abrufen der Bewertungen:", err.message);
+      return res.status(500).json({ error: "Datenbankfehler" });
+    }
+
+    res.status(200).json(rows); // Rückgabe der Ratings pro Tutor
+  });
+});
+
 // API Endpoint zum Löschen eines Kurses
 app.delete("/api/courses/:id", authenticateToken, (req, res) => {
   const { id } = req.params;
